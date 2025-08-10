@@ -176,15 +176,22 @@ The system produces multiple artifacts:
 
 ### Step 1: Get PostgreSQL 17.5 Hash
 
+⚠️ **IMPORTANT**: Nix uses `.tar.bz2` format, not `.tar.gz`!
+
 ```bash
-# Download PostgreSQL 17.5 source
-curl -LO https://ftp.postgresql.org/pub/source/v17.5/postgresql-17.5.tar.gz
+# Download PostgreSQL 17.5 source (bz2 format)
+curl -LO https://ftp.postgresql.org/pub/source/v17.5/postgresql-17.5.tar.bz2
 
 # Generate Nix hash
-nix hash file postgresql-17.5.tar.gz
-# Or use nix-prefetch-url
-nix-prefetch-url --unpack https://ftp.postgresql.org/pub/source/v17.5/postgresql-17.5.tar.gz
+nix hash file postgresql-17.5.tar.bz2
+# Output: sha256-/LerOOI7Jk0ZAssl5q2vtFJabry9AVQ0ru+e2oD1KNg=
+
+# Or use nix-prefetch-url (recommended)
+nix-prefetch-url --unpack https://ftp.postgresql.org/pub/source/v17.5/postgresql-17.5.tar.bz2
+# Output: /LerOOI7Jk0ZAssl5q2vtFJabry9AVQ0ru+e2oD1KNg=
 ```
+
+**Common Mistake**: Using `.tar.gz` will give you a different hash that won't work!
 
 ### Step 2: Update Configuration Files
 
@@ -192,7 +199,7 @@ nix-prefetch-url --unpack https://ftp.postgresql.org/pub/source/v17.5/postgresql
    ```nix
    "17" = {
      version = "17.5";  # Changed from 17.4
-     hash = "sha256-YOUR_NEW_HASH_HERE";  # Replace with hash from Step 1
+     hash = "sha256-/LerOOI7Jk0ZAssl5q2vtFJabry9AVQ0ru+e2oD1KNg=";  # Hash for .tar.bz2
    };
    ```
 
@@ -271,8 +278,12 @@ git push origin update-postgres-17.5
 1. **Hash Mismatch Error**:
    ```
    error: hash mismatch in fixed-output derivation
+   specified: sha256-cwv+80sDglwFGuD8N1Qsi+JrVaRORyNpIhr9OXGW4wM=
+   got:       sha256-/LerOOI7Jk0ZAssl5q2vtFJabry9AVQ0ru+e2oD1KNg=
    ```
-   Solution: Ensure you're using the correct hash from `nix-prefetch-url --unpack`
+   Solution: You're using the `.tar.gz` hash instead of `.tar.bz2`. Nix expects `.tar.bz2` format!
+   - Wrong: `postgresql-17.5.tar.gz` hash
+   - Correct: `postgresql-17.5.tar.bz2` hash
 
 2. **Extension Compatibility**:
    - Some extensions may not be compatible with 17.5
@@ -326,10 +337,11 @@ The Supabase PostgreSQL build system is a sophisticated Nix-based infrastructure
 4. Generates multiple deployment artifacts (Docker, AMI, local packages)
 
 To update to PostgreSQL 17.5:
-1. Get the new source hash
-2. Update `nix/config.nix` and `ansible/vars.yml`
-3. Test the build locally
-4. Build and test Docker images
-5. Create a pull request with your changes
+1. Get the new source hash (⚠️ use `.tar.bz2` not `.tar.gz`!)
+2. Update `nix/config.nix` with hash `sha256-/LerOOI7Jk0ZAssl5q2vtFJabry9AVQ0ru+e2oD1KNg=`
+3. Update `ansible/vars.yml` to version `17.5.1.001`
+4. Test the build locally
+5. Build and test Docker images
+6. Create a pull request with your changes
 
 The system is designed for maintainability and consistency across different deployment targets while managing complex extension compatibility requirements.
