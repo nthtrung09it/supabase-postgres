@@ -35,7 +35,7 @@ WORKDIR /nixpg
 COPY . .
 
 # Build PostgreSQL with extensions
-RUN nix profile add path:.#psql_18_slim/bin
+RUN nix profile add --accept-flake-config path:.#psql_18_slim/bin
 
 RUN nix store gc
 
