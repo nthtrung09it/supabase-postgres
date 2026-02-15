@@ -11,6 +11,7 @@
       pkgs-lib = pkgs.callPackage ./packages/lib.nix {
         psql_15 = self'.packages."psql_15/bin";
         psql_17 = self'.packages."psql_17/bin";
+        psql_18 = self'.packages."psql_18/bin";
         psql_orioledb-17 = self'.packages."psql_orioledb-17/bin";
         inherit (self.supabase) defaults;
       };
@@ -80,10 +81,13 @@
                 let
                   version = builtins.trace "pgpkg.version is: ${pgpkg.version}" pgpkg.version;
                   isOrioledbMatch = builtins.match "^17_[0-9]+$" version != null;
+                  isEighteenMatch = builtins.match "^18[.][0-9]+$" version != null;
                   isSeventeenMatch = builtins.match "^17[.][0-9]+$" version != null;
                   result =
                     if isOrioledbMatch then
                       "orioledb-17"
+                    else if isEighteenMatch then
+                      "18"
                     else if isSeventeenMatch then
                       "17"
                     else
@@ -101,7 +105,11 @@
               # slim packages get their own ports to avoid conflicts
               isSlim = lib.hasSuffix "_slim" effectiveLegacyPkgName;
               pgPort =
-                if (majorVersion == "17" && isSlim) then
+                if (majorVersion == "18" && isSlim) then
+                  "5541"
+                else if (majorVersion == "18") then
+                  "5542"
+                else if (majorVersion == "17" && isSlim) then
                   "5538"
                 else if (majorVersion == "15" && isSlim) then
                   "5539"
@@ -175,6 +183,8 @@
                   "15"
                 else if builtins.match "17.*" name != null then
                   "17"
+                else if builtins.match "18.*" name != null then
+                  "18"
                 else
                   throw "Unsupported PostgreSQL version: ${name}";
 
@@ -208,6 +218,8 @@
                         else if isVersionSpecific then
                           if version == "orioledb-17" then
                             builtins.match "z_orioledb-17_.*" name != null
+                          else if version == "18" then
+                            builtins.match "z_18_.*" name != null
                           else if version == "17" then
                             builtins.match "z_17_.*" name != null
                           else
@@ -256,6 +268,7 @@
                 "z_17_pgvector"
                 "z_17_rum"
                 "z_17_roles" # version-specific roles test, includes pgtle_admin
+                "z_18_ext_interface"
               ];
 
               # Convert filtered tests to a sorted list of basenames (without extension)
@@ -442,6 +455,14 @@
                     pg_ctl -D "$PGTAP_CLUSTER" stop
                     exit 1
                   fi
+                elif ${lib.boolToString (majorVersion == "18")}; then
+                  log info "PG 18 variant - loading PG 18 prime SQL file"
+                  if ! log_cmd psql -p ${pgPort} -h localhost --username=supabase_admin -d testing -v ON_ERROR_STOP=1 -Xf ${./tests/prime-18.sql}; then
+                    log error "Error executing PG 18 prime SQL file. PostgreSQL log content:"
+                    cat "$PGTAP_CLUSTER"/postgresql.log
+                    pg_ctl -D "$PGTAP_CLUSTER" stop
+                    exit 1
+                  fi
                 else
                   log info "Loading prime SQL file (full extension set)"
                   if ! log_cmd psql -p ${pgPort} -h localhost --username=supabase_admin -d testing -v ON_ERROR_STOP=1 -Xf ${./tests/prime.sql}; then
@@ -497,6 +518,12 @@
                   log info "CLI variant detected - loading CLI prime SQL file"
                   if ! log_cmd psql -p ${pgPort} -h localhost --no-password --username=supabase_admin -d postgres -v ON_ERROR_STOP=1 -Xf ${./tests/prime-cli.sql} 2>&1; then
                     log error "Error executing CLI prime SQL file"
+                    exit 1
+                  fi
+                elif ${lib.boolToString (majorVersion == "18")}; then
+                  log info "PG 18 variant - loading PG 18 prime SQL file"
+                  if ! log_cmd psql -p ${pgPort} -h localhost --no-password --username=supabase_admin -d postgres -v ON_ERROR_STOP=1 -Xf ${./tests/prime-18.sql} 2>&1; then
+                    log error "Error executing PG 18 prime SQL file"
                     exit 1
                   fi
                 else
@@ -560,6 +587,9 @@
           psql_17 = pkgs.runCommand "run-check-harness-psql-17" { } (
             lib.getExe (makeCheckHarness self'.packages."psql_17/bin" { legacyPkgName = "psql_17"; })
           );
+          psql_18 = pkgs.runCommand "run-check-harness-psql-18" { } (
+            lib.getExe (makeCheckHarness self'.packages."psql_18/bin" { legacyPkgName = "psql_18"; })
+          );
           psql_orioledb-17 = pkgs.runCommand "run-check-harness-psql-orioledb-17" { } (
             lib.getExe (
               makeCheckHarness self'.packages."psql_orioledb-17/bin" { legacyPkgName = "psql_orioledb-17"; }
@@ -570,6 +600,9 @@
           );
           psql_17_slim = pkgs.runCommand "run-check-harness-psql-17-slim" { } (
             lib.getExe (makeCheckHarness self'.packages."psql_17_slim/bin" { legacyPkgName = "psql_17_slim"; })
+          );
+          psql_18_slim = pkgs.runCommand "run-check-harness-psql-18-slim" { } (
+            lib.getExe (makeCheckHarness self'.packages."psql_18_slim/bin" { legacyPkgName = "psql_18_slim"; })
           );
           psql_orioledb-17_slim = pkgs.runCommand "run-check-harness-psql-orioledb-17-slim" { } (
             lib.getExe (
@@ -891,10 +924,12 @@
           inherit (self'.packages)
             postgresql_15_debug
             postgresql_15_src
-            postgresql_orioledb-17_debug
-            postgresql_orioledb-17_src
             postgresql_17_debug
             postgresql_17_src
+            postgresql_18_debug
+            postgresql_18_src
+            postgresql_orioledb-17_debug
+            postgresql_orioledb-17_src
             ;
         };
     };

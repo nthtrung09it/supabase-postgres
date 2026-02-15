@@ -5,6 +5,7 @@
   python3,
   psql_15,
   psql_17,
+  psql_18,
   psql_orioledb-17,
   pg_regress,
 }:
@@ -76,10 +77,11 @@ writeShellApplication {
         case "$dockerfile" in
             Dockerfile-15) echo "15 5436" ;;
             Dockerfile-17) echo "17 5435" ;;
+            Dockerfile-18) echo "18 5438" ;;
             Dockerfile-orioledb-17) echo "orioledb-17 5437" ;;
             *)
                 log_error "Unknown Dockerfile: $dockerfile"
-                log_error "Supported: Dockerfile-15, Dockerfile-17, Dockerfile-orioledb-17"
+                log_error "Supported: Dockerfile-15, Dockerfile-17, Dockerfile-18, Dockerfile-orioledb-17"
                 exit 1
                 ;;
         esac
@@ -126,6 +128,7 @@ writeShellApplication {
                 case "$version" in
                     15) [[ "$_basename" == z_15_* ]] && tests+=("$_basename") ;;
                     17) [[ "$_basename" == z_17_* ]] && tests+=("$_basename") ;;
+                    18) [[ "$_basename" == z_18_* ]] && tests+=("$_basename") ;;
                     orioledb-17) [[ "$_basename" == z_orioledb-17_* ]] && tests+=("$_basename") ;;
                 esac
             else
@@ -252,6 +255,10 @@ writeShellApplication {
                 PSQL_PATH="${psql_17}/bin/psql"
                 PG_ISREADY_PATH="${psql_17}/bin/pg_isready"
                 ;;
+            18)
+                PSQL_PATH="${psql_18}/bin/psql"
+                PG_ISREADY_PATH="${psql_18}/bin/pg_isready"
+                ;;
             orioledb-17)
                 PSQL_PATH="${psql_orioledb-17}/bin/psql"
                 PG_ISREADY_PATH="${psql_orioledb-17}/bin/pg_isready"
@@ -295,7 +302,13 @@ writeShellApplication {
         fi
         log_info "Container will access mock server at $HTTP_MOCK_HOST:$HTTP_MOCK_PORT"
 
-        log_info "Running prime.sql to enable extensions..."
+        # Select the appropriate prime SQL file based on version
+        PRIME_FILE="$TESTS_DIR/prime.sql"
+        if [[ "$VERSION" == "18" ]]; then
+            PRIME_FILE="$TESTS_DIR/prime-18.sql"
+        fi
+
+        log_info "Running $PRIME_FILE to enable extensions..."
         if ! PGPASSWORD="$POSTGRES_PASSWORD" "$PSQL_PATH" \
             -h localhost \
             -p "$PORT" \
@@ -303,8 +316,8 @@ writeShellApplication {
             -d "$POSTGRES_DB" \
             -v ON_ERROR_STOP=1 \
             -X \
-            -f "$TESTS_DIR/prime.sql" 2>&1; then
-            log_error "Failed to run prime.sql"
+            -f "$PRIME_FILE" 2>&1; then
+            log_error "Failed to run $PRIME_FILE"
             exit 1
         fi
 

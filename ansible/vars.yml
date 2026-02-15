@@ -6,11 +6,13 @@ async_mode: true
 postgres_major:
   - "15"
   - "17"
+  - "18"
   - orioledb-17
 
 # Full version strings for each major version
 postgres_release:
   postgresorioledb-17: "17.6.0.041-orioledb"
+  postgres18: "18.2.1.001"
   postgres17: "17.6.1.084"
   postgres15: "15.14.1.084"
 

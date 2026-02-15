@@ -1,0 +1,194 @@
+/*
+
+The purpose of this test is to monitor the SQL interface exposed
+by Postgres extensions so we have to manually review/approve any difference
+that emerge as versions change.
+
+*/
+/*
+
+List all extensions that are not enabled
+If a new entry shows up in this list, that means a new extension has been
+added and you should `create extension ...` to enable it in ./nix/tests/prime
+
+*/
+select
+  name
+from
+  pg_available_extensions
+where
+  installed_version is null
+order by
+  name asc;
+          name
+------------------------
+ pg_cron
+ pgjwt
+ postgis_tiger_geocoder
+ tsm_system_time
+ wal2json
+(5 rows)
+
+/*
+
+Monitor relocatability and config of each extension
+- lesson learned from pg_cron
+
+*/
+select
+  extname as extension_name,
+  extrelocatable as is_relocatable
+from
+  pg_extension
+order by
+  extname asc;
+        extension_name        | is_relocatable
+------------------------------+----------------
+ address_standardizer         | t
+ address_standardizer_data_us | t
+ amcheck                      | t
+ autoinc                      | t
+ bloom                        | t
+ btree_gin                    | t
+ btree_gist                   | t
+ citext                       | t
+ cube                         | t
+ dblink                       | f
+ dict_int                     | t
+ dict_xsyn                    | t
+ earthdistance                | t
+ file_fdw                     | t
+ fuzzystrmatch                | t
+ http                         | t
+ hstore                       | t
+ hypopg                       | f
+ index_advisor                | f
+ insert_username              | t
+ intagg                       | t
+ intarray                     | t
+ isn                          | t
+ lo                           | t
+ ltree                        | t
+ moddatetime                  | t
+ pageinspect                  | t
+ pg_buffercache               | t
+ pg_freespacemap              | t
+ pg_graphql                   | f
+ pg_hashids                   | t
+ pg_partman                   | f
+ pg_prewarm                   | t
+ pg_repack                    | f
+ pg_stat_monitor              | f
+ pg_stat_statements           | f
+ pg_surgery                   | t
+ pg_tle                       | f
+ pg_trgm                     | t
+ pg_visibility                | t
+ pg_walinspect                | f
+ pgaudit                      | t
+ pgcrypto                     | t
+ pgmq                         | f
+ pgroonga                     | f
+ pgroonga_database            | f
+ pgrouting                    | f
+ pgrowlocks                   | t
+ pgsodium                     | f
+ pgstattuple                  | t
+ pgtap                        | t
+ plpgsql                      | f
+ plpgsql_check                | f
+ postgis                      | f
+ postgis_raster               | f
+ postgis_sfcgal               | f
+ postgis_topology             | f
+ postgres_fdw                 | t
+ refint                       | t
+ seg                          | t
+ sslinfo                      | f
+ supabase_vault               | t
+ supautils                    | f
+ tablefunc                    | t
+ tcn                          | t
+ tsm_system_rows              | t
+ unaccent                     | t
+ uuid-ossp                    | t
+ vector                       | t
+ xml2                         | t
+(70 rows)
+
+/*
+
+Monitor extension public function interface
+
+*/
+select
+  e.extname as extension_name,
+  n.nspname as schema_name,
+  p.proname as function_name,
+  pg_catalog.pg_get_function_identity_arguments(p.oid) as argument_types,
+  pg_catalog.pg_get_function_result(p.oid) as return_type
+from
+  pg_catalog.pg_proc p
+  join pg_catalog.pg_namespace n
+    on n.oid = p.pronamespace
+  join pg_catalog.pg_depend d
+    on d.objid = p.oid
+  join pg_catalog.pg_extension e
+    on e.oid = d.refobjid
+where
+  d.deptype = 'e'
+  -- Filter out changes between pg15 and pg16 from extensions that ship with postgres
+  -- new in pg16
+  and not (e.extname = 'fuzzystrmatch' and p.proname = 'daitch_mokotoff')
+  and not (e.extname = 'pageinspect' and p.proname = 'bt_multi_page_stats')
+  and not (e.extname = 'pg_buffercache' and p.proname = 'pg_buffercache_summary')
+  and not (e.extname = 'pg_buffercache' and p.proname = 'pg_buffercache_usage_counts')
+  and not (e.extname = 'pg_walinspect' and p.proname = 'pg_get_wal_block_info')
+  -- removed in pg16
+  and not (e.extname = 'pg_walinspect' and p.proname = 'pg_get_wal_records_info_till_end_of_wal')
+  and not (e.extname = 'pg_walinspect' and p.proname = 'pg_get_wal_stats_till_end_of_wal')
+  -- changed in pg16 - output signature added a column
+  and not (e.extname = 'pageinspect' and p.proname = 'brin_page_items')
+order by
+  e.extname,
+  n.nspname,
+  p.proname,
+  md5(pg_catalog.pg_get_function_identity_arguments(p.oid));
+ extension_name | schema_name | function_name | argument_types | return_type
+----------------+-------------+---------------+----------------+-------------
+(0 rows)
+
+/*
+
+Monitor extension public table/view/matview/index interface
+
+*/
+select
+  e.extname as extension_name,
+  n.nspname as schema_name,
+  pc.relname as entity_name,
+  pa.attname
+from
+  pg_catalog.pg_class pc
+  join pg_catalog.pg_namespace n
+    on n.oid = pc.relnamespace
+  join pg_catalog.pg_depend d
+    on d.objid = pc.oid
+  join pg_catalog.pg_extension e
+    on e.oid = d.refobjid
+  left join pg_catalog.pg_attribute pa
+    on pa.attrelid = pc.oid
+    and pa.attnum > 0
+    and not pa.attisdropped
+where
+  d.deptype = 'e'
+  and pc.relkind in ('r', 'v', 'm', 'i')
+order by
+  e.extname,
+  n.nspname,
+  pc.relname,
+  pa.attname;
+ extension_name | schema_name | entity_name | attname
+----------------+-------------+-------------+---------
+(0 rows)
+

@@ -62,6 +62,18 @@
       orioledbExtensions = orioleFilteredExtensions ++ [ ../ext/orioledb.nix ];
       dbExtensions17 = orioleFilteredExtensions;
 
+      # PG 18 extensions - exclude extensions with known PG 18 incompatibilities
+      dbExtensions18 = builtins.filter (
+        x:
+        x != ../ext/timescaledb.nix
+        && x != ../ext/timescaledb-2.9.1.nix
+        && x != ../ext/plv8
+        && x != ../ext/pg_net.nix
+        && x != ../ext/pg_jsonschema
+        && x != ../ext/wrappers/default.nix
+        && x != ../ext/rum.nix
+      ) ourExtensions;
+
       # CLI extensions - minimal set for Supabase CLI with migration support
       cliExtensions = [
         ../ext/supautils.nix
@@ -129,6 +141,8 @@
               orioledbExtensions
             else if (builtins.elem version [ "17" ]) then
               dbExtensions17
+            else if (builtins.elem version [ "18" ]) then
+              dbExtensions18
             else
               ourExtensions;
           extCallPackage = pkgs.lib.callPackageWith (
@@ -230,11 +244,13 @@
       basePackages = {
         psql_15 = makePostgres "15" { };
         psql_17 = makePostgres "17" { };
+        psql_18 = makePostgres "18" { };
         psql_orioledb-17 = makePostgres "orioledb-17" { };
       };
       slimPackages = {
         psql_15_slim = makePostgres "15" { latestOnly = true; };
         psql_17_slim = makePostgres "17" { latestOnly = true; };
+        psql_18_slim = makePostgres "18" { latestOnly = true; };
         psql_orioledb-17_slim = makePostgres "orioledb-17" { latestOnly = true; };
       };
 
