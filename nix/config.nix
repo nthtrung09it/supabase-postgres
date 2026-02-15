@@ -55,7 +55,7 @@ in
           };
           "18" = {
             version = "18.2";
-            hash = "sha256-cvBXxA7/kEwDGxFv/YoZCIh17jzUujrCtfKAmtSxKTw=";
+            hash = "sha256-UkW9G3lwDVW44Fdb4DJe9h57vvYn5qYW5M82rUaHvjY=";
           };
         };
         orioledb = {

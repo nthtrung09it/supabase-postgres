@@ -72,6 +72,9 @@
         && x != ../ext/pg_jsonschema
         && x != ../ext/wrappers/default.nix
         && x != ../ext/rum.nix
+        && x != ../ext/postgis.nix
+        && x != ../ext/pgrouting
+        && x != ../ext/pgroonga
       ) ourExtensions;
 
       # CLI extensions - minimal set for Supabase CLI with migration support

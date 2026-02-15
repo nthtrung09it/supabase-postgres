@@ -39,12 +39,12 @@ RUN nix profile add path:.#psql_18_slim/bin
 
 RUN nix store gc
 
-# Build groonga and copy plugins
-RUN nix profile add path:.#supabase-groonga && \
-    mkdir -p /tmp/groonga-plugins && \
-    cp -r /nix/var/nix/profiles/default/lib/groonga/plugins /tmp/groonga-plugins/
-
-RUN nix store gc
+# NOTE: pgroonga/groonga excluded from PG 18 (needs major version bump to 4.0.4+)
+# Re-add groonga build step when pgroonga PG 18 support lands:
+#   RUN nix profile add path:.#supabase-groonga && \
+#       mkdir -p /tmp/groonga-plugins && \
+#       cp -r /nix/var/nix/profiles/default/lib/groonga/plugins /tmp/groonga-plugins/
+#   RUN nix store gc
 
 ####################
 # Stage 2: Gosu builder
@@ -92,8 +92,9 @@ RUN addgroup -S postgres && \
 # Copy Nix store and profiles from builder (profile already created by nix profile install)
 COPY --from=nix-builder /nix /nix
 
-# Copy groonga plugins
-COPY --from=nix-builder /tmp/groonga-plugins/plugins /usr/lib/groonga/plugins
+# NOTE: groonga plugins not needed without pgroonga
+# Re-add when pgroonga PG 18 support lands:
+#   COPY --from=nix-builder /tmp/groonga-plugins/plugins /usr/lib/groonga/plugins
 
 # Copy gosu
 COPY --from=gosu-builder /usr/local/bin/gosu /usr/local/bin/gosu
@@ -152,7 +153,8 @@ RUN sed -i \
 RUN sed -i 's/ timescaledb,//g;' "/etc/postgresql/postgresql.conf" && \
     sed -i 's/ pg_net,//g;' "/etc/postgresql/postgresql.conf" && \
     sed -i 's/db_user_namespace = off/#db_user_namespace = off/g;' "/etc/postgresql/postgresql.conf" && \
-    sed -i 's/ timescaledb,//g; s/ plv8,//g; s/ pg_net,//g; s/ rum,//g; s/ pg_jsonschema,//g; s/ wrappers//g' "/etc/postgresql-custom/supautils.conf"
+    sed -i 's/ timescaledb,//g; s/ plv8,//g; s/ pg_net,//g; s/ rum,//g; s/ pg_jsonschema,//g; s/ wrappers//g' "/etc/postgresql-custom/supautils.conf" && \
+    sed -i 's/ postgis,//g; s/ postgis_raster,//g; s/ postgis_sfcgal,//g; s/ postgis_tiger_geocoder,//g; s/ postgis_topology,//g; s/ pgrouting,//g; s/ pgroonga,//g; s/ pgroonga_database,//g; s/ address_standardizer,//g; s/ address_standardizer_data_us,//g' "/etc/postgresql-custom/supautils.conf"
 
 # Include schema migrations
 COPY migrations/db /docker-entrypoint-initdb.d/
@@ -184,7 +186,9 @@ ENV POSTGRES_INITDB_ARGS="--allow-group-access --locale-provider=icu --encoding=
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
-ENV GRN_PLUGINS_DIR=/usr/lib/groonga/plugins
+# NOTE: GRN_PLUGINS_DIR not needed without pgroonga
+# Re-add when pgroonga PG 18 support lands:
+#   ENV GRN_PLUGINS_DIR=/usr/lib/groonga/plugins
 # Point to minimal glibc locales included in slim Nix package for initdb locale support
 ENV LOCALE_ARCHIVE=/nix/var/nix/profiles/default/lib/locale/locale-archive
 

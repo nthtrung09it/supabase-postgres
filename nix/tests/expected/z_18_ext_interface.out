@@ -24,10 +24,9 @@ order by
 ------------------------
  pg_cron
  pgjwt
- postgis_tiger_geocoder
  tsm_system_time
  wal2json
-(5 rows)
+(4 rows)
 
 /*
 
@@ -44,8 +43,6 @@ order by
   extname asc;
         extension_name        | is_relocatable
 ------------------------------+----------------
- address_standardizer         | t
- address_standardizer_data_us | t
  amcheck                      | t
  autoinc                      | t
  bloom                        | t
@@ -88,19 +85,12 @@ order by
  pgaudit                      | t
  pgcrypto                     | t
  pgmq                         | f
- pgroonga                     | f
- pgroonga_database            | f
- pgrouting                    | f
  pgrowlocks                   | t
  pgsodium                     | f
  pgstattuple                  | t
  pgtap                        | t
  plpgsql                      | f
  plpgsql_check                | f
- postgis                      | f
- postgis_raster               | f
- postgis_sfcgal               | f
- postgis_topology             | f
  postgres_fdw                 | t
  refint                       | t
  seg                          | t
@@ -114,7 +104,7 @@ order by
  uuid-ossp                    | t
  vector                       | t
  xml2                         | t
-(70 rows)
+(60 rows)
 
 /*
 
