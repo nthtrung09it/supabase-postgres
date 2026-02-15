@@ -159,6 +159,11 @@ COPY migrations/db /docker-entrypoint-initdb.d/
 COPY ansible/files/pgbouncer_config/pgbouncer_auth_schema.sql /docker-entrypoint-initdb.d/init-scripts/00-schema.sql
 COPY ansible/files/stat_extension.sql /docker-entrypoint-initdb.d/migrations/00-extension.sql
 
+# PG 18 compatibility: EXECUTE PROCEDURE was removed in PG 18, replaced by EXECUTE FUNCTION
+# This affects trigger creation syntax in several migration files from 2022
+RUN find /docker-entrypoint-initdb.d -name '*.sql' -exec \
+    sed -i 's/EXECUTE PROCEDURE/EXECUTE FUNCTION/g' {} +
+
 # Add entrypoint script
 ADD --chmod=0755 \
     https://github.com/docker-library/postgres/raw/889f9447cd2dfe21cccfbe9bb7945e3b037e02d8/17/bullseye/docker-entrypoint.sh \
