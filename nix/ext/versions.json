@@ -32,10 +32,17 @@
     "1.4.1": {
       "postgresql": [
         "15",
+        "17"
+      ],
+      "hash": "sha256-88uKPSnITRZ2VkelI56jZ9GWazG/Rn39QlyHKJKSKMM="
+    },
+    "1.4.2": {
+      "postgresql": [
+        "15",
         "17",
         "18"
       ],
-      "hash": "sha256-88uKPSnITRZ2VkelI56jZ9GWazG/Rn39QlyHKJKSKMM="
+      "hash": "sha256-J1ltvNHB2v2I9IbYjM8w2mhXvBX31NkMasCL0O7bV8w="
     }
   },
   "index_advisor": {
@@ -121,11 +128,19 @@
       "postgresql": [
         "15",
         "17",
-        "orioledb-17",
-        "18"
+        "orioledb-17"
       ],
       "rev": "v1.6.4",
       "hash": "sha256-t1DpFkPiSfdoGG2NgNT7g1lkvSooZoRoUrix6cBID40="
+    },
+    "1.6.7": {
+      "postgresql": [
+        "15",
+        "17",
+        "orioledb-17",
+        "18"
+      ],
+      "hash": "sha256-oQjaQeIEMbg5pipY8tT4I7bNdyDOwcr/ZJikqgcEZOs="
     }
   },
   "pg_graphql": {
@@ -367,10 +382,15 @@
     },
     "17.1": {
       "postgresql": [
-        "17",
-        "18"
+        "17"
       ],
       "hash": "sha256-9St/ESPiFq2NiPKqbwHLwkIyATKUkOGxFcUrWgT+Iqo="
+    },
+    "18.0": {
+      "postgresql": [
+        "18"
+      ],
+      "hash": "sha256-+1YKJxMFkok7MsYeA9GRkc2FLxuBGRLpC+JzdK/xqoM="
     }
   },
   "pg_partman": {
