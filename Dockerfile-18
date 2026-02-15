@@ -152,7 +152,7 @@ RUN sed -i \
 # Remove extensions not available for PG 18 from postgresql.conf shared_preload_libraries
 RUN sed -i 's/ timescaledb,//g;' "/etc/postgresql/postgresql.conf" && \
     sed -i 's/ pg_net,//g;' "/etc/postgresql/postgresql.conf" && \
-    sed -i 's/,plan_filter//g;' "/etc/postgresql/postgresql.conf" && \
+    sed -i 's/, plan_filter//g;' "/etc/postgresql/postgresql.conf" && \
     sed -i 's/db_user_namespace = off/#db_user_namespace = off/g;' "/etc/postgresql/postgresql.conf"
 
 # Remove extensions not available for PG 18 from supautils.conf
