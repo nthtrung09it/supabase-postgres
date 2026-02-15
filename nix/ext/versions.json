@@ -281,7 +281,9 @@
         "orioledb-17",
         "18"
       ],
-      "hash": "sha256-mJBxen6Gg1LbzIF+WKThrs+wPD01a6WjZ+AHrGdWL4Q="
+      "hash": "sha256-mJBxen6Gg1LbzIF+WKThrs+wPD01a6WjZ+AHrGdWL4Q=",
+      "rust": "1.88.0",
+      "pgrx": "0.16.1"
     }
   },
   "pg_net": {
