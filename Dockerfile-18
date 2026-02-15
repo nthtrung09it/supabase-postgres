@@ -35,15 +35,22 @@ WORKDIR /nixpg
 COPY . .
 
 # Build PostgreSQL with extensions
-RUN nix profile add --accept-flake-config path:.#psql_18_slim/bin
-
-RUN nix store gc
-
-# Build groonga separately for pgroonga plugin support
-RUN nix profile add --accept-flake-config path:.#supabase-groonga && \
-    mkdir -p /tmp/groonga-plugins && \
-    cp -r /nix/var/nix/profiles/default/lib/groonga/plugins /tmp/groonga-plugins/
-RUN nix store gc
+# Uses Nix native binary cache for fast rebuilds (~5 min vs ~40 min)
+# The cache mount persists between builds; nix treats it as a local substituter
+RUN --mount=type=cache,target=/nix-binary-cache,id=nix-bc-pg18 \
+    nix profile add --accept-flake-config \
+        --option extra-substituters "file:///nix-binary-cache?trusted=true" \
+        --option require-sigs false \
+        path:.#psql_18_slim/bin && \
+    nix profile add --accept-flake-config \
+        --option extra-substituters "file:///nix-binary-cache?trusted=true" \
+        --option require-sigs false \
+        path:.#supabase-groonga && \
+    mkdir -p /groonga-plugins && \
+    cp -rL /nix/var/nix/profiles/default/lib/groonga/plugins /groonga-plugins/ && \
+    echo "Saving to local binary cache..." && \
+    nix copy --to file:///nix-binary-cache --all --no-check-sigs && \
+    nix store gc
 
 ####################
 # Stage 2: Gosu builder
@@ -88,11 +95,11 @@ RUN addgroup -S postgres && \
     adduser -S -G wal-g -s /bin/bash wal-g && \
     adduser postgres wal-g
 
-# Copy Nix store and profiles from builder (profile already created by nix profile install)
+# Copy Nix store and profiles from builder
 COPY --from=nix-builder /nix /nix
 
 # Copy groonga plugins for pgroonga
-COPY --from=nix-builder /tmp/groonga-plugins/plugins /usr/lib/groonga/plugins
+COPY --from=nix-builder /groonga-plugins/plugins /usr/lib/groonga/plugins
 
 # Copy gosu
 COPY --from=gosu-builder /usr/local/bin/gosu /usr/local/bin/gosu
@@ -171,10 +178,8 @@ COPY ansible/files/stat_extension.sql /docker-entrypoint-initdb.d/migrations/00-
 RUN find /docker-entrypoint-initdb.d -name '*.sql' -exec \
     sed -i 's/EXECUTE PROCEDURE/EXECUTE FUNCTION/g' {} +
 
-# Add entrypoint script
-ADD --chmod=0755 \
-    https://github.com/docker-library/postgres/raw/889f9447cd2dfe21cccfbe9bb7945e3b037e02d8/17/bullseye/docker-entrypoint.sh \
-    /usr/local/bin/docker-entrypoint.sh
+# Add entrypoint script (local copy to avoid GitHub 502 errors)
+COPY --chmod=0755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Setup pgsodium key script
 RUN mkdir -p /usr/share/postgresql/extension/ && \
