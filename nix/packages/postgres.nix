@@ -75,6 +75,7 @@
         && x != ../ext/postgis.nix
         && x != ../ext/pgrouting
         && x != ../ext/pgroonga
+        && x != ../ext/pg_plan_filter.nix
       ) ourExtensions;
 
       # CLI extensions - minimal set for Supabase CLI with migration support
