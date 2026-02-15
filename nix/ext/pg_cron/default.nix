@@ -60,7 +60,7 @@ let
           mv $out/share/postgresql/extension/pg_cron--1.3--1.4.sql $out/share/postgresql/extension/pg_cron--1.3.1--1.4.2.sql
           mv $out/share/postgresql/extension/pg_cron--1.4--1.4-1.sql $out/share/postgresql/extension/pg_cron--1.4.0--1.4.1.sql
           mv $out/share/postgresql/extension/pg_cron--1.4-1--1.5.sql $out/share/postgresql/extension/pg_cron--1.4.2--1.5.2.sql
-          mv $out/share/postgresql/extension/pg_cron--1.5--1.6.sql $out/share/postgresql/extension/pg_cron--1.5.2--1.6.4.sql
+          mv $out/share/postgresql/extension/pg_cron--1.5--1.6.sql $out/share/postgresql/extension/pg_cron--1.5.2--1.6.7.sql
         fi
 
         # Create versioned control file with modified module path

@@ -510,11 +510,19 @@
     "2.7": {
       "postgresql": [
         "15",
-        "17",
-        "18"
+        "17"
       ],
       "hash": "sha256-vR3MvfmUP2QEAtXFpq0NCCKck3wZPD+H3QleHtyVQJs=",
       "revision": "2.7.11"
+    },
+    "2.8": {
+      "postgresql": [
+        "15",
+        "17",
+        "18"
+      ],
+      "hash": "sha256-SqL+Rw1ICeTj2b5bfW+awOf0Kk4SrsvfC6HF6XNe6+I=",
+      "revision": "v2.8.9"
     }
   },
   "plv8": {
