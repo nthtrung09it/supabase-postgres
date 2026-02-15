@@ -865,7 +865,8 @@
         "17",
         "18"
       ],
-      "hash": "sha256-sHCqAsZlUpyjyMFKBU9w/pdI1bwZqgj1vMofgo7JFag="
+      "hash": "sha256-sHCqAsZlUpyjyMFKBU9w/pdI1bwZqgj1vMofgo7JFag=",
+      "revision": "2.3.1"
     }
   },
   "pgtap": {
