@@ -72,8 +72,7 @@
         && x != ../ext/pg_jsonschema
         && x != ../ext/wrappers/default.nix
         && x != ../ext/rum.nix
-        && x != ../ext/postgis.nix # needs PostGIS 3.5.3+ for PG 18
-        && x != ../ext/pgrouting # needs pgRouting 3.8.0+ for PG 18
+        && x != ../ext/postgis.nix # 3.6.x nix build needs adaptation for new upgrade-path install
         && x != ../ext/pgroonga # needs groonga >= 14.1.2 (currently 14.0.5)
         && x != ../ext/pg_plan_filter.nix # unmaintained, repo deleted
       ) ourExtensions;

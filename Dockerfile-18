@@ -170,7 +170,6 @@ RUN sed -i \
     -e 's/ postgis_sfcgal,//g' \
     -e 's/ postgis_tiger_geocoder,//g' \
     -e 's/ postgis_topology,//g' \
-    -e 's/ pgrouting,//g' \
     -e 's/ pgroonga,//g' \
     -e 's/ pgroonga_database,//g' \
     -e 's/address_standardizer, //g' \
