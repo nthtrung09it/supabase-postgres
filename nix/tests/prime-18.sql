@@ -3,9 +3,8 @@ set client_min_messages = warning;
 -- CREATE ROLE anon;
 -- CREATE ROLE authenticated;
 -- CREATE ROLE service_role;
--- address_standardizer is not available for PG 18 (part of PostGIS)
--- create extension if not exists address_standardizer;
--- create extension if not exists address_standardizer_data_us;
+create extension if not exists address_standardizer;
+create extension if not exists address_standardizer_data_us;
 create extension if not exists amcheck;
 create extension if not exists autoinc;
 create extension if not exists bloom;
@@ -40,7 +39,7 @@ cron.database_name = 'testing'
 */
 -- create extension if not exists pg_cron;
 
--- pg_net is not available for PG 18
+-- pg_net requires shared_preload_libraries, loaded via postgresql.conf
 -- create extension if not exists pg_net;
 create extension if not exists pg_graphql;
 create extension if not exists pg_freespacemap;
@@ -62,22 +61,19 @@ create extension if not exists pg_walinspect;
 create extension if not exists pgaudit;
 create extension if not exists pgcrypto;
 create extension if not exists pgtap;
--- pgroonga is not available for PG 18 (needs major version bump)
--- create extension if not exists pgroonga;
--- create extension if not exists pgroonga_database;
+create extension if not exists pgroonga;
+create extension if not exists pgroonga_database;
 create extension if not exists pgsodium;
 create extension if not exists pgrowlocks;
 create extension if not exists pgstattuple;
 create extension if not exists plpgsql_check;
--- postgis and pgrouting are not available for PG 18 (need major version bumps)
--- create extension if not exists postgis;
--- create extension if not exists postgis_raster;
--- create extension if not exists postgis_sfcgal;
--- create extension if not exists postgis_topology;
--- create extension if not exists pgrouting; -- requires postgis
+create extension if not exists postgis;
+create extension if not exists postgis_raster;
+create extension if not exists postgis_sfcgal;
+create extension if not exists postgis_topology;
+create extension if not exists pgrouting; -- requires postgis
 create extension if not exists postgres_fdw;
--- rum is not available for PG 18
--- create extension if not exists rum;
+create extension if not exists rum;
 create extension if not exists refint;
 create extension if not exists seg;
 create extension if not exists sslinfo;
@@ -89,6 +85,5 @@ create extension if not exists tsm_system_rows;
 create extension if not exists unaccent;
 create extension if not exists "uuid-ossp";
 create extension if not exists vector;
--- wrappers is not available for PG 18 (needs pgrx update)
--- create extension if not exists wrappers;
+create extension if not exists wrappers;
 create extension if not exists xml2;

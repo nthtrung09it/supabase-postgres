@@ -68,12 +68,7 @@
         x != ../ext/timescaledb.nix
         && x != ../ext/timescaledb-2.9.1.nix
         && x != ../ext/plv8
-        && x != ../ext/pg_net.nix
-        && x != ../ext/pg_jsonschema
-        && x != ../ext/wrappers/default.nix
-        && x != ../ext/rum.nix
-        && x != ../ext/postgis.nix # 3.6.x nix build needs adaptation for new upgrade-path install
-        && x != ../ext/pgroonga # needs groonga >= 14.1.2 (currently 14.0.5)
+        && x != ../ext/pg_jsonschema # needs pgrx 0.16.1+ (current 0.12.6, no upstream release yet)
         && x != ../ext/pg_plan_filter.nix # unmaintained, repo deleted
       ) ourExtensions;
 
