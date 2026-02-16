@@ -70,6 +70,8 @@
         && x != ../ext/plv8
         && x != ../ext/pg_jsonschema # needs pgrx 0.16.1+ (current 0.12.6, no upstream release yet)
         && x != ../ext/pg_plan_filter.nix # unmaintained, repo deleted
+        && x != ../ext/postgis.nix # PostGIS 3.6.x install-extension-upgrades-from-known-versions breaks Nix builds
+        && x != ../ext/pgrouting # depends on postgis
       ) ourExtensions;
 
       # CLI extensions - minimal set for Supabase CLI with migration support

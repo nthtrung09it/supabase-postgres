@@ -468,12 +468,6 @@
         "17"
       ],
       "hash": "sha256-QC77AnPGpPQGEWi6JtJdiNsB2su5+aV2pKg5ImR2B0k="
-    },
-    "4.0.1": {
-      "postgresql": [
-        "18"
-      ],
-      "hash": "sha256-j3dlVcENhBveVmkuzWaLfHWy73OMDpC2FxrNQ4W6m9k="
     }
   },
   "pgsodium": {
@@ -576,8 +570,7 @@
     "3.6.2": {
       "postgresql": [
         "15",
-        "17",
-        "18"
+        "17"
       ],
       "hash": "sha256-1IgImmTuQGC859u6ApH8yjWOf3rFIw4u5bNE50hXKcQ="
     }
