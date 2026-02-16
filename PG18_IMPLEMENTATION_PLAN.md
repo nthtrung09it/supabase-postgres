@@ -1,9 +1,10 @@
 # PostgreSQL 18.2 Support — Implementation Plan
 
 **Branch:** `pg-18-v2` (fresh from `origin/develop`)
-**Date:** 2026-02-15
+**Date:** 2026-02-16
 **PG Version:** 18.2 (current stable, GA Sep 25, 2025)
 **Tag:** `pg18-v2-stack-tested` (Docker image + full Supabase stack verified)
+**Image:** `nthtrung09it/postgres:18.6.1.083-rc2` (pushed to Docker Hub)
 
 ---
 
@@ -145,7 +146,7 @@ Re-enabled 7 previously-excluded extensions:
 
 ### Docker Image Build
 ```bash
-# Build command (completed successfully, ~35 min)
+# rc1 build (arm64, ~35 min)
 DOCKER_BUILDKIT=1 docker buildx build \
   --builder supabase-postgres-builder \
   --platform linux/arm64 \
@@ -153,7 +154,12 @@ DOCKER_BUILDKIT=1 docker buildx build \
   -t supabase/postgres:18-local \
   --load --progress=plain .
 
-# Result: 476MB image, PostgreSQL 18.2, 66 available extensions
+# rc2 build (amd64, ~3 min with Nix binary cache)
+docker build -f Dockerfile-18 -t supabase/postgres:18-rc2 .
+
+# Pushed as: nthtrung09it/postgres:18.6.1.083-rc2
+# Image size: 1.25GB (amd64), 287MB content size
+# PostgreSQL 18.2, 28+ extensions
 ```
 
 ### Supabase Stack Test
@@ -249,7 +255,15 @@ docker run --rm \
 | `1f520373` | fix: add --accept-flake-config to Dockerfile-18 nix build |
 | `45612bea` | docs: add local nix binary cache proxy setup for faster Docker builds |
 | `9b3ed670` | feat: add Supabase stack test harness for PG 18 |
-| *(pending)* | feat: re-enable pg_net, rum, wrappers, pgroonga, postgis for PG 18 |
+| `a595fbe` | feat: re-enable pg_net, rum, wrappers, pgroonga, postgis for PG 18 |
+| `a9c4d0c` | chore: add claude settings |
+| `5296dce` | fix: Dockerfile-18 nix binary cache, postgis build, local entrypoint |
+| `2c01ae1` | fix: disable PostGIS 3.6.x install-extension-upgrades-from-known-versions |
+| `2698506` | fix: exclude PostGIS and pgrouting from PG 18 build |
+| `a3a8562` | fix: exclude RUM from PG 18 build (PostingItem type error) |
+| `6bafdf8` | fix: reduce Docker image size by removing groonga profile before GC |
+| `8511a4f` | fix: correct plan_filter and wrappers sed patterns for PG 18 |
+| `9ce92a8` | feat: complete PG 18 audit remediation |
 
 ---
 
@@ -284,8 +298,9 @@ docker run --rm \
 ## Remaining Tasks
 
 ### Immediate (Docker Image Rebuild)
-- [ ] Commit all current changes (extension re-enablement)
-- [ ] Rebuild Docker image with re-enabled extensions: `DOCKER_BUILDKIT=1 docker buildx build --builder supabase-postgres-builder --platform linux/arm64 -f Dockerfile-18 -t supabase/postgres:18-local --load --progress=plain .`
+- [x] Commit all current changes (extension re-enablement)
+- [x] Rebuild Docker image with re-enabled extensions
+- [x] Push image to Docker Hub as `nthtrung09it/postgres:18.6.1.083-rc2`
 - [ ] Verify image starts and all new extensions load correctly
 
 ### Validation
@@ -293,7 +308,7 @@ docker run --rm \
 - [ ] `nix eval` all PG 18 packages (psql_18, psql_18_slim, checks, docker-image-inputs)
 - [ ] Run `nix build .#checks.aarch64-darwin.psql_18 -L` (pg_regress tests)
 - [ ] Verify PG 15/17/orioledb-17 builds are unaffected (no regressions)
-- [ ] Generate `migrations/schema-18.sql` with dbmate-tool
+- [x] Generate `migrations/schema-18.sql` with dbmate-tool
 
 ### Integration Testing
 - [ ] Start Supabase stack with new image (13 services)

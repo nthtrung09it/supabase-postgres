@@ -1,0 +1,1 @@
+Updated the alias on line 117 of `~/.zshrc`. To use it in your current shell, run `source ~/.zshrc`.

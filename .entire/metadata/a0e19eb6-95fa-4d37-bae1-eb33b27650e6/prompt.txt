@@ -1,0 +1,1 @@
+help me create an alias ccd for claude code --dangerously-skip-permissions

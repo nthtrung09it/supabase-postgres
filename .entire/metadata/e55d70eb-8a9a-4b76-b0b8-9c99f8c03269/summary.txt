@@ -1,0 +1,7 @@
+Done. The **pg18-amd64** team (with its `builder` agent) has been fully cleaned up:
+
+- Removed `~/.claude/teams/pg18-amd64/`
+- Removed `~/.claude/tasks/pg18-amd64/`
+- The tmux agent pane was already terminated
+
+No other teams were found. Everything is clean now.

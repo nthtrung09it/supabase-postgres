@@ -1,0 +1,7 @@
+Done. The alias `ccd` is now available. You can use it like:
+
+```
+ccd "your prompt here"
+```
+
+It will expand to `claude --dangerously-skip-permissions`. The alias persists across new shell sessions since it's saved in `~/.zshrc`.

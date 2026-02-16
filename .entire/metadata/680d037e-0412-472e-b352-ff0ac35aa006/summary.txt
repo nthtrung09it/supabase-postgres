@@ -1,0 +1,13 @@
+It's already in `.zshrc` but wasn't loaded in this session. 
+
+**Summary of what was done:**
+- Cleaned up stale team/task dirs from `pg18-amd64-build`
+- Confirmed `IS_SANDBOX=1` is in `~/.zshrc` (was missing from current env)
+
+**To prevent this going forward**, make sure Claude Code is launched with `IS_SANDBOX=1` in the environment, e.g.:
+
+```bash
+IS_SANDBOX=1 claude --dangerously-skip-permissions
+```
+
+Or just `source ~/.zshrc` before launching so the export takes effect. The team spawning should work after that.
