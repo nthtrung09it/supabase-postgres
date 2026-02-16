@@ -72,6 +72,7 @@
         && x != ../ext/pg_plan_filter.nix # unmaintained, repo deleted
         && x != ../ext/postgis.nix # PostGIS 3.6.x install-extension-upgrades-from-known-versions breaks Nix builds
         && x != ../ext/pgrouting # depends on postgis
+        && x != ../ext/rum.nix # PostingItem type error in PG 18
       ) ourExtensions;
 
       # CLI extensions - minimal set for Supabase CLI with migration support

@@ -75,7 +75,8 @@ create extension if not exists plpgsql_check;
 -- create extension if not exists postgis_topology;
 -- create extension if not exists pgrouting; -- requires postgis
 create extension if not exists postgres_fdw;
-create extension if not exists rum;
+-- RUM excluded from PG 18 (PostingItem type error)
+-- create extension if not exists rum;
 create extension if not exists refint;
 create extension if not exists seg;
 create extension if not exists sslinfo;
