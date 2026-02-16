@@ -40,8 +40,7 @@ cron.database_name = 'testing'
 */
 -- create extension if not exists pg_cron;
 
--- pg_net requires shared_preload_libraries, loaded via postgresql.conf
--- create extension if not exists pg_net;
+create extension if not exists pg_net;
 create extension if not exists pg_graphql;
 create extension if not exists pg_freespacemap;
 create extension if not exists pg_hashids;

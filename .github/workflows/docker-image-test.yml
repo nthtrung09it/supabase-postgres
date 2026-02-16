@@ -63,6 +63,7 @@ jobs:
         dockerfile:
           - Dockerfile-15
           - Dockerfile-17
+          - Dockerfile-18
           - Dockerfile-orioledb-17
     steps:
       - name: Checkout Repo
