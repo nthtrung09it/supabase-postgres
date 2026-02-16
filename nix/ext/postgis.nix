@@ -98,7 +98,7 @@ let
         sed -i 's@/usr/bin/file@${file}/bin/file@' configure
         configureFlags="--datadir=$out/share/postgresql --datarootdir=$out/share/postgresql --bindir=$out/bin --docdir=$doc/share/doc/${pname} --with-gdalconfig=${gdal}/bin/gdal-config --with-jsondir=${json_c.dev} --with-sfcgal"
 
-        makeFlags="PERL=${perl}/bin/perl datadir=$out/share/postgresql pkglibdir=$out/lib bindir=$out/bin docdir=$doc/share/doc/${pname} PGSQL_SHAREDIR=$out/share/postgresql"
+        makeFlags="PERL=${perl}/bin/perl datadir=$out/share/postgresql pkglibdir=$out/lib bindir=$out/bin docdir=$doc/share/doc/${pname}"
       '';
 
       postConfigure = ''
@@ -111,6 +111,12 @@ let
             "raster/scripts/python/Makefile";
         mkdir -p $out/bin
         ln -s ${postgresql}/bin/postgres $out/bin/postgres
+
+        # PostGIS 3.6.x added install-extension-upgrades-from-known-versions which
+        # calls postgis.pl with --pg_sharedir pointing to PostgreSQL's read-only store
+        # path instead of $out. This breaks Nix builds. Our postInstall already handles
+        # extension versioning, so disable this target. Safe no-op for older PostGIS.
+        find . -name 'GNUmakefile' -o -name 'Makefile' | xargs sed -i 's/install-extension-upgrades-from-known-versions//g' 2>/dev/null || true
       '';
 
       postInstall = ''
