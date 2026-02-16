@@ -89,7 +89,26 @@
       "WebFetch(domain:groonga.org)",
       "Bash(git fetch:*)",
       "Bash(git status:*)",
-      "Bash(DOCKER_BUILDKIT=1 docker buildx build:*)"
+      "Bash(DOCKER_BUILDKIT=1 docker buildx build:*)",
+      "WebFetch(domain:kevincox.ca)",
+      "WebFetch(domain:discourse.nixos.org)",
+      "WebFetch(domain:mitchellh.com)",
+      "WebFetch(domain:grahamc.com)",
+      "WebFetch(domain:scrive.github.io)",
+      "WebFetch(domain:nix.dev)",
+      "WebFetch(domain:forums.docker.com)",
+      "WebFetch(domain:docs.docker.com)",
+      "Bash(git push:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker images:*)",
+      "Bash(nix profile remove:*)",
+      "Bash(docker save:*)",
+      "Bash(gzip:*)",
+      "Bash(docker history:*)",
+      "Bash(docker pull:*)",
+      "Bash(until docker exec:*)",
+      "Bash(do sleep 2)",
+      "Bash(xxd:*)"
     ]
   }
 }
