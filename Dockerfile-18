@@ -161,13 +161,14 @@ RUN sed -i 's/ timescaledb,//g;' "/etc/postgresql/postgresql.conf" && \
     sed -i 's/db_user_namespace = off/#db_user_namespace = off/g;' "/etc/postgresql/postgresql.conf"
 
 # Remove extensions not available for PG 18 from supautils.conf
-# Only timescaledb, plv8, pg_jsonschema, and pg_plan_filter remain excluded
+# Remove from privileged_extensions and comment list
 RUN sed -i \
     -e 's/ timescaledb,//g' \
     -e 's/ plv8,//g' \
     -e 's/ pg_jsonschema,//g' \
-    -e 's/ pg_plan_filter,//g' \
-    "/etc/postgresql-custom/supautils.conf"
+    "/etc/postgresql-custom/supautils.conf" && \
+    # Remove plan_filter.* from privileged_role_allowed_configs (extension repo deleted)
+    sed -i 's/ plan_filter\.[*],//g' "/etc/postgresql-custom/supautils.conf"
 
 # Include schema migrations
 COPY migrations/db /docker-entrypoint-initdb.d/
