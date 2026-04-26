@@ -108,7 +108,9 @@
       "Bash(docker pull:*)",
       "Bash(until docker exec:*)",
       "Bash(do sleep 2)",
-      "Bash(xxd:*)"
+      "Bash(xxd:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr diff:*)"
     ]
   }
 }

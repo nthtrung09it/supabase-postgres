@@ -33,3 +33,5 @@ common-nix.vars.pkr.hcl
 nixos.qcow2
 .lsp
 .clj-kondo
+
+.claude/settings.local.json
