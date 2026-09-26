@@ -153,6 +153,22 @@ jobs:
           echo "image_latest=${IMAGE_BASE}:18-latest" >> "$GITHUB_OUTPUT"
           echo "Computed tag: $VERSION"
 
+      # Safety net for the parallel Nix build below (4 derivations x 4 threads):
+      # several Rust/pgrx builds linking at once can exceed the droplet's 16 GB.
+      # With swap they slow down instead of being OOM-killed an hour in. The
+      # snapshot ships no swap; the 100 GB disk has ~80 GB free.
+      - name: Add swap
+        run: |
+          set -euo pipefail
+          if ! swapon --show | grep -q .; then
+            fallocate -l 16G /swapfile
+            chmod 600 /swapfile
+            mkswap /swapfile >/dev/null
+            swapon /swapfile
+          fi
+          swapon --show
+          free -h
+
       # Build ONCE into the local docker daemon (default `docker` buildx driver,
       # so no tarball export), then push separately with retries. Unlike
       # build-claude-agent-headless.yml we do NOT loop `buildx build --push`:
@@ -176,10 +192,18 @@ jobs:
           # from cache.nixos.org (Fastly, and preferred anyway: priority 40 vs
           # the bucket's default 50); sources are fetched from origin and the
           # few Supabase-only derivations are built on the droplet.
+          # NIX_MAX_JOBS / NIX_CORES: sized for the c-8 droplet (8 vCPU / 16 GB)
+          # created by start-runner — 4 derivations at a time, 4 threads each
+          # (~2x oversubscribed, so CPUs stay busy through single-threaded
+          # phases). Nix's default max-jobs=1 left the CPU mostly idle: the
+          # first full build's 15-min load average was ~2.6 on 8 vCPUs, ~67 min.
+          # Re-tune both if the droplet size changes.
           docker buildx build \
             --platform linux/amd64 \
             --file Dockerfile-18 \
             --build-arg SUPABASE_NIX_CACHE= \
+            --build-arg NIX_MAX_JOBS=4 \
+            --build-arg NIX_CORES=4 \
             --tag "$IMAGE" --tag "$IMAGE_LATEST" \
             --load \
             --progress plain \

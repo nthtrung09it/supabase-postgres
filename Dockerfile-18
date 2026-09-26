@@ -27,8 +27,16 @@ RUN addgroup -S postgres && \
 # where that bucket downloads at a few KB/s; nixpkgs deps then still come
 # from cache.nixos.org and Supabase-only paths are fetched/built locally.
 ARG SUPABASE_NIX_CACHE=https://nix-postgres-artifacts.s3.amazonaws.com
+# Build parallelism. Nix's default max-jobs is 1, i.e. every derivation
+# (hundreds of small Rust crates, then PG + each extension) builds strictly one
+# at a time and most CPUs sit idle. NIX_MAX_JOBS = derivations built
+# concurrently, NIX_CORES = threads each may use (NIX_BUILD_CORES; 0 = all).
+ARG NIX_MAX_JOBS=4
+ARG NIX_CORES=4
 RUN { \
       echo "extra-experimental-features = nix-command flakes"; \
+      echo "max-jobs = $NIX_MAX_JOBS"; \
+      echo "cores = $NIX_CORES"; \
       if [ -n "$SUPABASE_NIX_CACHE" ]; then \
         echo "extra-substituters = $SUPABASE_NIX_CACHE"; \
         echo "extra-trusted-public-keys = nix-postgres-artifacts:dGZlQOvKcNEjvT7QEAJbcV6b6uk7VF/hWMjhYleiaLI="; \
