@@ -96,13 +96,29 @@ jobs:
           echo "droplet_id=${DROPLET_ID}" >> "$GITHUB_OUTPUT"
           echo "Created droplet ${DROPLET_ID}; waiting for runner '${LABEL}' online…"
 
+          # GITOPS_PAT shares its 5000/h REST quota with everything else on the
+          # same GitHub account (kelos TaskSpawners poll PRs every minute and
+          # can drain it). If the runners API is failing we can't SEE the
+          # runner, but that doesn't mean it's down: after the droplet has had
+          # ~2 min to boot, proceed and let the build job queue for its label
+          # rather than tearing down a healthy droplet.
+          API_FAILS=0
           for i in $(seq 1 40); do
-            STATUS=$(curl -fsSL \
-              -H "Authorization: Bearer ${GH_PAT}" -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${REPO}/actions/runners?per_page=100" \
-              | jq -r --arg L "$LABEL" '.runners[] | select(any(.labels[]; .name==$L)) | .status' | head -1 || true)
-            if [ "$STATUS" = "online" ]; then echo "Runner online after ~$((i*10))s"; exit 0; fi
-            echo "  waiting… (${i}/40) status=${STATUS:-none}"
+            if RESP=$(curl -fsS \
+                -H "Authorization: Bearer ${GH_PAT}" -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${REPO}/actions/runners?per_page=100" 2>&1); then
+              API_FAILS=0
+              STATUS=$(echo "$RESP" | jq -r --arg L "$LABEL" '.runners[] | select(any(.labels[]; .name==$L)) | .status' | head -1)
+              if [ "$STATUS" = "online" ]; then echo "Runner online after ~$((i*10))s"; exit 0; fi
+              echo "  waiting… (${i}/40) status=${STATUS:-none}"
+            else
+              API_FAILS=$((API_FAILS + 1))
+              echo "::warning::runners API call failed (${API_FAILS}x): ${RESP}"
+              if [ "$API_FAILS" -ge 6 ] && [ "$i" -ge 12 ]; then
+                echo "::warning::cannot verify runner '${LABEL}' (GitHub API unavailable, likely rate limit); proceeding — the build job will queue until it comes online"
+                exit 0
+              fi
+            fi
             sleep 10
           done
           echo "::error::runner did not come online within ~400s"; exit 1
