@@ -1,0 +1,210 @@
+# Build & push the Supabase Postgres 18 image on an EPHEMERAL DigitalOcean droplet.
+#
+# Fork-only workflow (nthtrung09it/supabase-postgres), same pattern as
+# open-design's build-open-design.yml: start-runner creates a droplet from the
+# pre-baked builder snapshot, it registers as an --ephemeral runner, builds
+# Dockerfile-18, pushes to Harbor, and stop-runner destroys it.
+#
+# Why a LONG build: nothing built against PG 18.6 exists in any binary cache,
+# so the single `nix profile add .#psql_18_slim/bin` layer in Dockerfile-18
+# compiles Postgres plus every extension from source — including the Rust/pgrx
+# ones (pg_graphql, pg_jsonschema, wrappers). That can run past the 2h
+# ci-ephemeral reaper threshold, so the droplet is tagged ci-ephemeral-long,
+# which hello-k3s-ansible's reap-ci-droplets.yml sweeps with a longer limit.
+#
+# Requires in THIS repo:
+#   secret  DO_API_TOKEN     DigitalOcean PAT (write)
+#   secret  GITOPS_PAT       classic repo-scoped PAT, admin on this repo
+#                            (GITHUB_TOKEN CANNOT register self-hosted runners)
+#   secret  HARBOR_USERNAME / HARBOR_PASSWORD
+#   var     DO_BUILDER_SNAPSHOT_ID   (230898546)
+# and a k3s-runners scale set for this repo (hello-k3s-ansible
+# 41-gitlab-runners/apps/arc/runner-set/envs/central/values.yaml).
+name: Build & Push Supabase Postgres 18 Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - pg-18-6
+
+concurrency:
+  group: build-supabase-postgres-18
+  cancel-in-progress: false
+
+jobs:
+  # ── 1. Create the ephemeral DO droplet + register an ephemeral runner ───────
+  start-runner:
+    # Same gate as the build, so an ordinary push never creates a paid droplet.
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ci build]')
+    runs-on: k3s-runners
+    timeout-minutes: 15
+    outputs:
+      label: ${{ steps.start.outputs.label }}
+      droplet_id: ${{ steps.start.outputs.droplet_id }}
+    steps:
+      - name: Set up doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_API_TOKEN }}
+
+      - name: Create ephemeral DO runner
+        id: start
+        env:
+          GH_PAT: ${{ secrets.GITOPS_PAT }}
+          REPO: ${{ github.repository }}
+          SNAPSHOT: ${{ vars.DO_BUILDER_SNAPSHOT_ID }}
+        run: |
+          set -euo pipefail
+          command -v jq >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq jq; }
+
+          LABEL="do-runner-${GITHUB_RUN_ID}"
+          NAME="supabase-postgres-18-builder-${GITHUB_RUN_ID}"
+
+          REG_TOKEN=$(curl -fsSL -X POST \
+            -H "Authorization: Bearer ${GH_PAT}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/actions/runners/registration-token" | jq -r .token)
+          [ -n "$REG_TOKEN" ] && [ "$REG_TOKEN" != "null" ] \
+            || { echo "::error::No registration token — is GITOPS_PAT a classic repo-scoped PAT with admin on ${REPO}?"; exit 1; }
+
+          cat > /tmp/cloud-init.sh <<EOF
+          #!/bin/bash
+          set -eux
+          export RUNNER_ALLOW_RUNASROOT=1
+          cd /actions-runner
+          ./config.sh --url "https://github.com/${REPO}" --token "${REG_TOKEN}" \
+            --labels "${LABEL}" --name "${NAME}" --unattended --ephemeral --replace
+          ./svc.sh install root
+          ./svc.sh start
+          EOF
+
+          # c-8 (8 dedicated vCPU / 16 GB / 100 GB disk), not open-design's
+          # s-4vcpu-8gb: this is a long CPU-bound compile (C + Rust/pgrx), where
+          # dedicated vCPUs avoid shared-CPU throttling and 16 GB keeps the Rust
+          # link steps from OOMing. 100 GB clears the snapshot's 80 GB min disk.
+          # Tagged ci-ephemeral-long (NOT ci-ephemeral): see header.
+          DROPLET_ID=$(doctl compute droplet create "$NAME" \
+            --region sgp1 --size c-8 \
+            --image "$SNAPSHOT" \
+            --ssh-keys 43399145 \
+            --tag-name ci-ephemeral-long \
+            --user-data-file /tmp/cloud-init.sh \
+            --wait --output json | jq -r '.[0].id')
+          [ -n "$DROPLET_ID" ] && [ "$DROPLET_ID" != "null" ] || { echo "::error::droplet create failed"; exit 1; }
+          echo "label=${LABEL}"          >> "$GITHUB_OUTPUT"
+          echo "droplet_id=${DROPLET_ID}" >> "$GITHUB_OUTPUT"
+          echo "Created droplet ${DROPLET_ID}; waiting for runner '${LABEL}' online…"
+
+          for i in $(seq 1 40); do
+            STATUS=$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_PAT}" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPO}/actions/runners?per_page=100" \
+              | jq -r --arg L "$LABEL" '.runners[] | select(any(.labels[]; .name==$L)) | .status' | head -1 || true)
+            if [ "$STATUS" = "online" ]; then echo "Runner online after ~$((i*10))s"; exit 0; fi
+            echo "  waiting… (${i}/40) status=${STATUS:-none}"
+            sleep 10
+          done
+          echo "::error::runner did not come online within ~400s"; exit 1
+
+  # ── 2. The heavy build — runs ON the DO droplet ─────────────────────────────
+  build:
+    needs: start-runner
+    runs-on: ${{ needs.start-runner.outputs.label }}
+    # Must stay under the ci-ephemeral-long reaper threshold (5h) in
+    # hello-k3s-ansible's reap-ci-droplets.yml.
+    timeout-minutes: 240
+    env:
+      IMAGE_BASE: harbor.trungnguyen.dev/elearning/supabase-postgres
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          set -euo pipefail
+          # Read the release string from ansible/vars.yml (postgres18, e.g.
+          # 18.6.0.001-rc1) — do NOT hardcode it, or the tag keeps claiming an
+          # old release after a bump. grep/sed, not yq: the DO builder snapshot
+          # ships docker/buildx/git/jq only.
+          PG_RELEASE=$(sed -n -E 's/^[[:space:]]*postgres18:[[:space:]]*"([^"]+)".*/\1/p' ansible/vars.yml)
+          [ -n "$PG_RELEASE" ] \
+            || { echo "::error::could not read postgres_release.postgres18 from ansible/vars.yml"; exit 1; }
+          SHA_SHORT=$(git rev-parse --short=8 HEAD)
+          VERSION="${PG_RELEASE}-${SHA_SHORT}"
+          echo "image=${IMAGE_BASE}:${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "image_latest=${IMAGE_BASE}:18-latest" >> "$GITHUB_OUTPUT"
+          echo "Computed tag: $VERSION"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: harbor.trungnguyen.dev
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # Dockerfile-18's nix-builder stage does `COPY . .` and builds the
+          # flake from it, so the build context must be the repo root.
+          context: .
+          file: Dockerfile-18
+          platforms: linux/amd64
+          push: true
+          # NO registry cache: Harbor's Cloudflare R2 backend rejects the large
+          # cache blob (see build-open-design.yml), and the droplet is discarded
+          # each run, so a local cache is worthless anyway.
+          tags: |
+            ${{ steps.tag.outputs.image }}
+            ${{ steps.tag.outputs.image_latest }}
+
+      - name: Summary
+        run: |
+          {
+            echo "## Pushed image"
+            echo "- \`${{ steps.tag.outputs.image }}\`"
+            echo "- \`${{ steps.tag.outputs.image_latest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 3. Destroy the droplet — always, whenever one was created ───────────────
+  stop-runner:
+    needs: [start-runner, build]
+    runs-on: k3s-runners
+    # Keyed on droplet_id, NOT on start-runner success: if start-runner created
+    # the droplet and then failed (e.g. the online-poll timed out), this still
+    # deletes it.
+    if: ${{ always() && needs.start-runner.outputs.droplet_id != '' }}
+    timeout-minutes: 10
+    steps:
+      - name: Set up doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_API_TOKEN }}
+
+      - name: Destroy droplet + deregister runner
+        env:
+          GH_PAT: ${{ secrets.GITOPS_PAT }}
+          REPO: ${{ github.repository }}
+          LABEL: ${{ needs.start-runner.outputs.label }}
+          DROPLET_ID: ${{ needs.start-runner.outputs.droplet_id }}
+        run: |
+          set -uo pipefail
+          if [ -n "${DROPLET_ID:-}" ]; then
+            doctl compute droplet delete "$DROPLET_ID" --force || true
+            echo "Deleted droplet ${DROPLET_ID}"
+          fi
+          RID=$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_PAT}" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/actions/runners?per_page=100" \
+            | jq -r --arg L "$LABEL" '.runners[] | select(any(.labels[]; .name==$L)) | .id' | head -1 || true)
+          if [ -n "${RID:-}" ] && [ "$RID" != "null" ]; then
+            curl -fsSL -X DELETE \
+              -H "Authorization: Bearer ${GH_PAT}" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPO}/actions/runners/${RID}" || true
+            echo "Deregistered lingering runner ${RID}"
+          fi
