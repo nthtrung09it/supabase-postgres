@@ -221,17 +221,22 @@ jobs:
           # the bucket's default 50); sources are fetched from origin and the
           # few Supabase-only derivations are built on the droplet.
           # NIX_MAX_JOBS / NIX_CORES: sized for the c-8 droplet (8 vCPU / 16 GB)
-          # created by start-runner — 4 derivations at a time, 4 threads each
-          # (~2x oversubscribed, so CPUs stay busy through single-threaded
-          # phases). Nix's default max-jobs=1 left the CPU mostly idle: the
-          # first full build's 15-min load average was ~2.6 on 8 vCPUs, ~67 min.
+          # created by start-runner — up to 4 derivations at a time, each may
+          # use all 8 threads. Nix's default max-jobs=1 left the CPU mostly
+          # idle (first build: 15-min load ~2.6 on 8 vCPUs, ~67 min). With
+          # cores=4, the long tail was still half idle: wrappers 0.6.x compiles
+          # the bundled DuckDB C++ engine (libduckdb-sys) as ONE derivation,
+          # capped at 4 threads while few other derivations were left (CPU 48%
+          # idle). cores=8 lets such single big builds use the whole droplet;
+          # when 4 run at once it is ~4x oversubscribed, which only costs some
+          # context switching — the 16G swap above covers the higher peak RAM.
           # Re-tune both if the droplet size changes.
           docker buildx build \
             --platform linux/amd64 \
             --file Dockerfile-18 \
             --build-arg SUPABASE_NIX_CACHE= \
             --build-arg NIX_MAX_JOBS=4 \
-            --build-arg NIX_CORES=4 \
+            --build-arg NIX_CORES=8 \
             --label org.opencontainers.image.source="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
             --label org.opencontainers.image.revision="${GITHUB_SHA}" \
             --label dev.trungnguyen.supabase-postgres.upstream-revision="${UPSTREAM}" \
