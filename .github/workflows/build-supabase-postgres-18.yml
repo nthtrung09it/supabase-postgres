@@ -201,6 +201,27 @@ jobs:
           IMAGE_LATEST: ${{ steps.tag.outputs.image_latest }}
         run: |
           set -eu
+          # Upload progress (same monitor as open-design's
+          # build-open-design.yml): outside a TTY `docker push` prints no byte
+          # counts, so a slow Harbor upload looks identical to a hang. Only a
+          # process in the SAME step can write into this log, hence the inline
+          # background monitor: bytes sent on the default-route interface
+          # every 30s, e.g. "[upload] 67 MB sent since push start, 88 KB/s".
+          IF=$(ip route show default | awk '{print $5; exit}')
+          sent() { cat "/sys/class/net/$IF/statistics/tx_bytes"; }
+          echo "Image size: $(( $(docker image inspect --format '{{.Size}}' "$IMAGE") / 1048576 )) MB uncompressed (the compressed upload is smaller)"
+          (
+            start=$(sent); p=$start
+            while sleep 30; do
+              b=$(sent); d=$((b - p)); p=$b
+              if [ "$d" -gt 1048576 ]; then
+                echo "[upload] $(( (b - start) / 1048576 )) MB sent since push start, $((d / 30 / 1024)) KB/s"
+              fi
+            done
+          ) &
+          MONITOR=$!
+          trap 'kill "$MONITOR" 2>/dev/null || true' EXIT
+
           for ref in "$IMAGE" "$IMAGE_LATEST"; do
             pushed=false
             for attempt in 1 2 3 4 5; do
