@@ -83,6 +83,15 @@ let
         EOF
           mv $out/share/postgresql/extension/pg_cron--1.4-1--1.5.sql $out/share/postgresql/extension/pg_cron--1.4.2--1.5.2.sql
           mv $out/share/postgresql/extension/pg_cron--1.5--1.6.sql $out/share/postgresql/extension/pg_cron--1.5.2--1.6.4.sql
+          ${lib.optionalString (lib.versions.majorMinor version == "1.6" && lib.versionOlder "1.6.4" version) ''
+            # Upstream's SQL version is still 1.6 after 1.6.4 (1.6.5+ are C-only
+            # fixes), so without this step a newer default_version (1.6.7 on
+            # PG 18) has no install path: CREATE EXTENSION pg_cron fails with
+            # "no installation script nor update path for version".
+            cat > $out/share/postgresql/extension/pg_cron--1.6.4--${version}.sql << 'EOF'
+          -- Alignment migration: 1.6.4 and ${version} are schema-identical.
+          EOF
+          ''}
           ${legacyAlignmentMigrations}
         fi
 
