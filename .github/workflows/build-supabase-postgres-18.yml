@@ -137,8 +137,29 @@ jobs:
           echo "image_latest=${IMAGE_BASE}:18-latest" >> "$GITHUB_OUTPUT"
           echo "Computed tag: $VERSION"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # Build ONCE into the local docker daemon (default `docker` buildx driver,
+      # so no tarball export), then push separately with retries. Unlike
+      # build-claude-agent-headless.yml we do NOT loop `buildx build --push`:
+      # a genuine compile failure here costs 1-2h per attempt and would burn
+      # the whole job timeout retrying.
+      - name: Build image
+        env:
+          IMAGE: ${{ steps.tag.outputs.image }}
+          IMAGE_LATEST: ${{ steps.tag.outputs.image_latest }}
+        run: |
+          set -euo pipefail
+          # Dockerfile-18's nix-builder stage does `COPY . .` and builds the
+          # flake from it, so the build context must be the repo root.
+          # NO registry cache: Harbor's Cloudflare R2 backend rejects the large
+          # cache blob (see build-open-design.yml), and the droplet is discarded
+          # each run, so a local cache is worthless anyway.
+          docker buildx build \
+            --platform linux/amd64 \
+            --file Dockerfile-18 \
+            --tag "$IMAGE" --tag "$IMAGE_LATEST" \
+            --load \
+            --progress plain \
+            .
 
       - name: Log in to Harbor
         uses: docker/login-action@v3
@@ -147,21 +168,26 @@ jobs:
           username: ${{ secrets.HARBOR_USERNAME }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          # Dockerfile-18's nix-builder stage does `COPY . .` and builds the
-          # flake from it, so the build context must be the repo root.
-          context: .
-          file: Dockerfile-18
-          platforms: linux/amd64
-          push: true
-          # NO registry cache: Harbor's Cloudflare R2 backend rejects the large
-          # cache blob (see build-open-design.yml), and the droplet is discarded
-          # each run, so a local cache is worthless anyway.
-          tags: |
-            ${{ steps.tag.outputs.image }}
-            ${{ steps.tag.outputs.image_latest }}
+      # Retry the push: Harbor's registry can OOM/502 mid-push on largish
+      # layers. `docker push` skips layers the registry already has, so each
+      # retry only re-sends what didn't land.
+      - name: Push to Harbor (retry on 502/OOM)
+        env:
+          IMAGE: ${{ steps.tag.outputs.image }}
+          IMAGE_LATEST: ${{ steps.tag.outputs.image_latest }}
+        run: |
+          set -eu
+          for ref in "$IMAGE" "$IMAGE_LATEST"; do
+            pushed=false
+            for attempt in 1 2 3 4 5; do
+              if docker push "$ref"; then
+                echo "pushed $ref on attempt ${attempt}"; pushed=true; break
+              fi
+              echo "::warning::push of $ref attempt ${attempt} failed (harbor 502 / registry OOM?); retrying in $((attempt * 30))s…"
+              sleep $((attempt * 30))
+            done
+            $pushed || { echo "::error::push of $ref failed after 5 attempts"; exit 1; }
+          done
 
       - name: Summary
         run: |
