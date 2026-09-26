@@ -11,6 +11,7 @@
       pkgs-lib = pkgs.callPackage ./packages/lib.nix {
         psql_15 = self'.packages."psql_15/bin";
         psql_17 = self'.packages."psql_17/bin";
+        psql_18 = self'.packages."psql_18/bin";
         psql_orioledb-17 = self'.packages."psql_orioledb-17/bin";
         inherit (self.supabase) defaults;
       };
@@ -89,10 +90,16 @@
                   "5540"
                 else if (pgpkg.version == "17" && isCliVariant) then
                   "5541"
+                else if (pgpkg.version == "18" && isSlim) then
+                  "5543"
+                else if (pgpkg.version == "18" && isCliVariant) then
+                  "5544"
                 else if (pgpkg.version == "17") then
                   "5535"
                 else if (pgpkg.version == "15") then
                   "5536"
+                else if (pgpkg.version == "18") then
+                  "5542"
                 else
                   "5537";
 
@@ -176,6 +183,8 @@
                             builtins.match "z_orioledb-17_.*" name != null
                           else if version == "17" then
                             builtins.match "z_17_.*" name != null
+                          else if version == "18" then
+                            builtins.match "z_18_.*" name != null
                           else
                             builtins.match "z_15_.*" name != null
                         else
@@ -590,6 +599,9 @@
           psql_17 = pkgs.runCommand "run-check-harness-psql-17" { } (
             lib.getExe (makeCheckHarness self'.packages."psql_17/bin" { })
           );
+          psql_18 = pkgs.runCommand "run-check-harness-psql-18" { } (
+            lib.getExe (makeCheckHarness self'.packages."psql_18/bin" { })
+          );
           psql_orioledb-17 = pkgs.runCommand "run-check-harness-psql-orioledb-17" { } (
             lib.getExe (makeCheckHarness self'.packages."psql_orioledb-17/bin" { })
           );
@@ -599,12 +611,18 @@
           psql_17_slim = pkgs.runCommand "run-check-harness-psql-17-slim" { } (
             lib.getExe (makeCheckHarness self'.packages."psql_17_slim/bin" { isSlim = true; })
           );
+          psql_18_slim = pkgs.runCommand "run-check-harness-psql-18-slim" { } (
+            lib.getExe (makeCheckHarness self'.packages."psql_18_slim/bin" { isSlim = true; })
+          );
           psql_orioledb-17_slim = pkgs.runCommand "run-check-harness-psql-orioledb-17-slim" { } (
             lib.getExe (makeCheckHarness self'.packages."psql_orioledb-17_slim/bin" { isSlim = true; })
           );
           # CLI variant checks
           psql_17_cli = pkgs.runCommand "run-check-harness-psql-17-cli" { } (
             lib.getExe (makeCheckHarness self'.packages."psql_17_cli/bin" { isCliVariant = true; })
+          );
+          psql_18_cli = pkgs.runCommand "run-check-harness-psql-18-cli" { } (
+            lib.getExe (makeCheckHarness self'.packages."psql_18_cli/bin" { isCliVariant = true; })
           );
           # Portable CLI bundle portability checks
           psql_17_cli_portable =
@@ -921,6 +939,8 @@
             postgresql_orioledb-17_src
             postgresql_17_debug
             postgresql_17_src
+            postgresql_18_debug
+            postgresql_18_src
             ;
           psql_orioledb-17_exts_orioledb_debug = self'.legacyPackages.psql_orioledb-17.exts.orioledb.debug;
         };
