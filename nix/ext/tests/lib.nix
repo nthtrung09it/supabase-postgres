@@ -6,6 +6,7 @@ let
   expectedVersions = {
     "15" = "15.19";
     "17" = "17.11";
+    "18" = "18.6";
   };
 
   defaultPort = 5432;
