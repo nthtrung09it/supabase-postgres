@@ -12,7 +12,7 @@
 # Full image reference. The workflow passes the ref pinned in cnpg/base-image.
 # (The skill's `${BASE_TAG}_${TARGETARCH}` form only fits Docker Hub's
 # per-arch upstream tags; our Harbor base is a plain single-arch amd64 tag.)
-ARG BASE_IMAGE=harbor.trungnguyen.dev/elearning/supabase-postgres:18.6.0.001-rc1-dbc20562
+ARG BASE_IMAGE=harbor.trungnguyen.dev/elearning/supabase-postgres:18.6.0.001-rc1-up07c75511-76be8da8
 FROM ${BASE_IMAGE}
 
 ARG BASE_IMAGE
