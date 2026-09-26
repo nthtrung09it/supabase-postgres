@@ -22,11 +22,18 @@ RUN addgroup -S postgres && \
     adduser -S -s /bin/bash -G wal-g wal-g
 
 # Create nix config
-RUN cat <<EOF > /tmp/extra-nix.conf
-extra-experimental-features = nix-command flakes
-extra-substituters = https://nix-postgres-artifacts.s3.amazonaws.com
-extra-trusted-public-keys = nix-postgres-artifacts:dGZlQOvKcNEjvT7QEAJbcV6b6uk7VF/hWMjhYleiaLI=
-EOF
+# Supabase's binary cache (S3 us-east-1). Pass an empty value
+# (--build-arg SUPABASE_NIX_CACHE=) to build without it, e.g. from regions
+# where that bucket downloads at a few KB/s; nixpkgs deps then still come
+# from cache.nixos.org and Supabase-only paths are fetched/built locally.
+ARG SUPABASE_NIX_CACHE=https://nix-postgres-artifacts.s3.amazonaws.com
+RUN { \
+      echo "extra-experimental-features = nix-command flakes"; \
+      if [ -n "$SUPABASE_NIX_CACHE" ]; then \
+        echo "extra-substituters = $SUPABASE_NIX_CACHE"; \
+        echo "extra-trusted-public-keys = nix-postgres-artifacts:dGZlQOvKcNEjvT7QEAJbcV6b6uk7VF/hWMjhYleiaLI="; \
+      fi; \
+    } > /tmp/extra-nix.conf && cat /tmp/extra-nix.conf
 RUN curl -L https://releases.nixos.org/nix/nix-2.34.6/install | sh -s -- --daemon --no-channel-add --yes --nix-extra-conf-file /tmp/extra-nix.conf
 ENV PATH="${PATH}:/nix/var/nix/profiles/default/bin"
 RUN nix --version

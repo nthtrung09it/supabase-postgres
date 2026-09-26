@@ -153,9 +153,17 @@ jobs:
           # NO registry cache: Harbor's Cloudflare R2 backend rejects the large
           # cache blob (see build-open-design.yml), and the droplet is discarded
           # each run, so a local cache is worthless anyway.
+          # SUPABASE_NIX_CACHE empty = build WITHOUT Supabase's S3 binary cache.
+          # From sgp1 that us-east-1 bucket measured 3-17 KB/s (vs 7 MB/s to
+          # GitHub), so every Supabase-only path trickled and the first run
+          # sat on one 3.9 MB download for 15+ min. nixpkgs deps still come
+          # from cache.nixos.org (Fastly, and preferred anyway: priority 40 vs
+          # the bucket's default 50); sources are fetched from origin and the
+          # few Supabase-only derivations are built on the droplet.
           docker buildx build \
             --platform linux/amd64 \
             --file Dockerfile-18 \
+            --build-arg SUPABASE_NIX_CACHE= \
             --tag "$IMAGE" --tag "$IMAGE_LATEST" \
             --load \
             --progress plain \
