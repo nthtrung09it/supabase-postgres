@@ -135,6 +135,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Full commit history (file contents fetched on demand) so the tag
+          # step can find the upstream supabase/postgres commit in HEAD.
+          fetch-depth: 0
+          filter: blob:none
 
       - name: Compute image tag
         id: tag
@@ -147,10 +152,32 @@ jobs:
           PG_RELEASE=$(sed -n -E 's/^[[:space:]]*postgres18:[[:space:]]*"([^"]+)".*/\1/p' ansible/vars.yml)
           [ -n "$PG_RELEASE" ] \
             || { echo "::error::could not read postgres_release.postgres18 from ansible/vars.yml"; exit 1; }
+
+          # Upstream supabase/postgres commit this build is based on: the newest
+          # commit in HEAD's history that some supabase/postgres branch contains
+          # (everything newer is ours). Commit graph only (--filter=tree:0), no
+          # tags, over git: no GitHub REST quota needed.
+          git remote add upstream https://github.com/supabase/postgres.git 2>/dev/null || true
+          git fetch --quiet --no-tags --filter=tree:0 upstream '+refs/heads/*:refs/remotes/upstream/*'
+          git rev-list HEAD --not --remotes=upstream > "$RUNNER_TEMP/ours.txt"
+          # sed -n 1p (not head -1): reads all input, so no SIGPIPE under pipefail
+          UPSTREAM=$(git rev-list --date-order HEAD | grep -v -x -F -f "$RUNNER_TEMP/ours.txt" | sed -n 1p)
+          [ -n "$UPSTREAM" ] || { echo "::error::no supabase/postgres commit found in HEAD's history"; exit 1; }
+
+          # <release>-up<upstream supabase/postgres>-<this repo>: says which
+          # upstream it is built on, and rebuilds on the same upstream (e.g. a
+          # fix on pg-18-6) still get a unique tag.
           SHA_SHORT=$(git rev-parse --short=8 HEAD)
-          VERSION="${PG_RELEASE}-${SHA_SHORT}"
-          echo "image=${IMAGE_BASE}:${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "image_latest=${IMAGE_BASE}:18-latest" >> "$GITHUB_OUTPUT"
+          UP_SHORT=$(git rev-parse --short=8 "$UPSTREAM")
+          VERSION="${PG_RELEASE}-up${UP_SHORT}-${SHA_SHORT}"
+          {
+            echo "image=${IMAGE_BASE}:${VERSION}"
+            echo "image_latest=${IMAGE_BASE}:18-latest"
+            echo "upstream=${UPSTREAM}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Upstream supabase/postgres: $(git log -1 --format='%h %cd %s' --date=short "$UPSTREAM")"
+          echo "  on: $(git branch -r --contains "$UPSTREAM" | grep upstream/ | tr -d ' ' | tr '\n' ' ')"
+          echo "Our commits on top: $(grep -c . "$RUNNER_TEMP/ours.txt")"
           echo "Computed tag: $VERSION"
 
       # Safety net for the parallel Nix build below (4 derivations x 4 threads):
@@ -178,6 +205,7 @@ jobs:
         env:
           IMAGE: ${{ steps.tag.outputs.image }}
           IMAGE_LATEST: ${{ steps.tag.outputs.image_latest }}
+          UPSTREAM: ${{ steps.tag.outputs.upstream }}
         run: |
           set -euo pipefail
           # Dockerfile-18's nix-builder stage does `COPY . .` and builds the
@@ -204,6 +232,9 @@ jobs:
             --build-arg SUPABASE_NIX_CACHE= \
             --build-arg NIX_MAX_JOBS=4 \
             --build-arg NIX_CORES=4 \
+            --label org.opencontainers.image.source="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label org.opencontainers.image.revision="${GITHUB_SHA}" \
+            --label dev.trungnguyen.supabase-postgres.upstream-revision="${UPSTREAM}" \
             --tag "$IMAGE" --tag "$IMAGE_LATEST" \
             --load \
             --progress plain \
@@ -259,11 +290,17 @@ jobs:
           done
 
       - name: Summary
+        env:
+          UPSTREAM: ${{ steps.tag.outputs.upstream }}
         run: |
           {
             echo "## Pushed image"
             echo "- \`${{ steps.tag.outputs.image }}\`"
             echo "- \`${{ steps.tag.outputs.image_latest }}\`"
+            echo ""
+            echo "Upstream: [supabase/postgres@${UPSTREAM:0:8}](https://github.com/supabase/postgres/commit/${UPSTREAM}) + this repo @ \`${GITHUB_SHA:0:8}\`"
+            echo ""
+            echo "Next: bump \`cnpg/base-image\` to this tag and commit with \`[ci cnpg]\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── 3. Destroy the droplet — always, whenever one was created ───────────────
