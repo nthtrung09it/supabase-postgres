@@ -115,6 +115,8 @@
           docker-image-test = pkgs.callPackage ./docker-image-test.nix {
             psql_15 = self'.packages."psql_15/bin";
             psql_17 = self'.packages."psql_17/bin";
+            # plain PG 18 core is enough for the psql/pg_isready client; avoids building every extension
+            psql_18 = self'.packages."postgresql_18";
             psql_orioledb-17 = self'.packages."psql_orioledb-17/bin";
             inherit (self'.packages) pg_regress;
           };

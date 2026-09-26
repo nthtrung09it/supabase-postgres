@@ -52,6 +52,7 @@ jobs:
         include:
           - { dockerfile: Dockerfile-15,          target: "",                  name: 15                      }
           - { dockerfile: Dockerfile-17,          target: "",                  name: 17                      }
+          - { dockerfile: Dockerfile-18,          target: "",                  name: 18                      }
           - { dockerfile: Dockerfile-orioledb-17, target: "",                  name: orioledb-17             }
           - { dockerfile: Dockerfile-multigres,   target: variant-17,          name: multigres-17            }
           - { dockerfile: Dockerfile-multigres,   target: variant-orioledb-17, name: multigres-orioledb-17   }
