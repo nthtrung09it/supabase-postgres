@@ -1,0 +1,336 @@
+# Build & push the CloudNativePG flavour of the Supabase Postgres 18 image on an
+# EPHEMERAL DigitalOcean droplet.
+#
+# cnpg/Dockerfile layers barman-cloud (CNPG in-tree barmanObjectStore), dbmate
+# and the Supabase migration scripts onto the base image built by
+# build-supabase-postgres-18.yml. Ported from hello-k3s-ansible's
+# build-cnpg-postgres skill (steps 1-2): the migrations are taken straight from
+# the base image instead of a local compose stack + docker cp, the official
+# self-hosted DB files are fetched from supabase/supabase (master) on every
+# build, and the processed templates + mapping.txt are GENERATED and validated
+# at build time instead of hand-maintained.
+#
+# Base image: the ref pinned in cnpg/base-image (bump it by commit), or the
+# workflow_dispatch `base_image` input.
+#
+# Same droplet pattern as build-supabase-postgres-18.yml, but a light build
+# (pull base + pip barman + dbmate, ~10 min), so the snapshot-floor
+# s-2vcpu-4gb droplet and the regular 2h ci-ephemeral reaper tag.
+#
+# Requires in THIS repo:
+#   secret  DO_API_TOKEN     DigitalOcean PAT (write)
+#   secret  GITOPS_PAT       classic repo-scoped PAT, admin on this repo
+#                            (GITHUB_TOKEN CANNOT register self-hosted runners)
+#   secret  HARBOR_USERNAME / HARBOR_PASSWORD
+#   var     DO_BUILDER_SNAPSHOT_ID   (230898546)
+name: Build & Push CNPG Supabase Postgres 18 Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_image:
+        description: "Base image ref (default: the one pinned in cnpg/base-image)"
+        required: false
+        default: ""
+      supabase_ref:
+        description: "supabase/supabase branch, tag or commit for the self-hosted DB files (default: master)"
+        required: false
+        default: "master"
+  push:
+    branches:
+      - pg-18-6
+
+concurrency:
+  group: build-cnpg-supabase-postgres-18
+  cancel-in-progress: false
+
+jobs:
+  # ── 1. Create the ephemeral DO droplet + register an ephemeral runner ───────
+  start-runner:
+    # Same gate as the build, so an ordinary push never creates a paid droplet.
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ci cnpg]')
+    runs-on: k3s-runners
+    timeout-minutes: 15
+    outputs:
+      label: ${{ steps.start.outputs.label }}
+      droplet_id: ${{ steps.start.outputs.droplet_id }}
+    steps:
+      - name: Set up doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_API_TOKEN }}
+
+      - name: Create ephemeral DO runner
+        id: start
+        env:
+          GH_PAT: ${{ secrets.GITOPS_PAT }}
+          REPO: ${{ github.repository }}
+          SNAPSHOT: ${{ vars.DO_BUILDER_SNAPSHOT_ID }}
+        run: |
+          set -euo pipefail
+          command -v jq >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq jq; }
+
+          LABEL="do-runner-${GITHUB_RUN_ID}"
+          NAME="cnpg-supabase-postgres-18-builder-${GITHUB_RUN_ID}"
+
+          REG_TOKEN=$(curl -fsSL -X POST \
+            -H "Authorization: Bearer ${GH_PAT}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/actions/runners/registration-token" | jq -r .token)
+          [ -n "$REG_TOKEN" ] && [ "$REG_TOKEN" != "null" ] \
+            || { echo "::error::No registration token — is GITOPS_PAT a classic repo-scoped PAT with admin on ${REPO}?"; exit 1; }
+
+          cat > /tmp/cloud-init.sh <<EOF
+          #!/bin/bash
+          set -eux
+          export RUNNER_ALLOW_RUNASROOT=1
+          cd /actions-runner
+          ./config.sh --url "https://github.com/${REPO}" --token "${REG_TOKEN}" \
+            --labels "${LABEL}" --name "${NAME}" --unattended --ephemeral --replace
+          ./svc.sh install root
+          ./svc.sh start
+          EOF
+
+          # s-2vcpu-4gb: the snapshot-floor size (80 GB min disk). This build
+          # only pulls the base image, pip-installs barman (small lz4/snappy
+          # wheel compiles) and copies scripts — nothing that needs the c-8.
+          DROPLET_ID=$(doctl compute droplet create "$NAME" \
+            --region sgp1 --size s-2vcpu-4gb \
+            --image "$SNAPSHOT" \
+            --ssh-keys 43399145 \
+            --tag-name ci-ephemeral \
+            --user-data-file /tmp/cloud-init.sh \
+            --wait --output json | jq -r '.[0].id')
+          [ -n "$DROPLET_ID" ] && [ "$DROPLET_ID" != "null" ] || { echo "::error::droplet create failed"; exit 1; }
+          echo "label=${LABEL}"          >> "$GITHUB_OUTPUT"
+          echo "droplet_id=${DROPLET_ID}" >> "$GITHUB_OUTPUT"
+          echo "Created droplet ${DROPLET_ID}; waiting for runner '${LABEL}' online…"
+
+          # GITOPS_PAT shares its 5000/h REST quota with everything else on the
+          # same GitHub account (kelos TaskSpawners poll PRs every minute and
+          # can drain it). If the runners API is failing we can't SEE the
+          # runner, but that doesn't mean it's down: after the droplet has had
+          # ~2 min to boot, proceed and let the build job queue for its label
+          # rather than tearing down a healthy droplet.
+          API_FAILS=0
+          for i in $(seq 1 40); do
+            if RESP=$(curl -fsS \
+                -H "Authorization: Bearer ${GH_PAT}" -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${REPO}/actions/runners?per_page=100" 2>&1); then
+              API_FAILS=0
+              STATUS=$(echo "$RESP" | jq -r --arg L "$LABEL" '.runners[] | select(any(.labels[]; .name==$L)) | .status' | head -1)
+              if [ "$STATUS" = "online" ]; then echo "Runner online after ~$((i*10))s"; exit 0; fi
+              echo "  waiting… (${i}/40) status=${STATUS:-none}"
+            else
+              API_FAILS=$((API_FAILS + 1))
+              echo "::warning::runners API call failed (${API_FAILS}x): ${RESP}"
+              if [ "$API_FAILS" -ge 6 ] && [ "$i" -ge 12 ]; then
+                echo "::warning::cannot verify runner '${LABEL}' (GitHub API unavailable, likely rate limit); proceeding — the build job will queue until it comes online"
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "::error::runner did not come online within ~400s"; exit 1
+
+  # ── 2. The build — runs ON the DO droplet ───────────────────────────────────
+  build:
+    needs: start-runner
+    runs-on: ${{ needs.start-runner.outputs.label }}
+    timeout-minutes: 45
+    env:
+      IMAGE_BASE: harbor.trungnguyen.dev/elearning/cnpg-supabase-postgres
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve base image + compute tag
+        id: tag
+        env:
+          INPUT_BASE_IMAGE: ${{ inputs.base_image }}
+        run: |
+          set -euo pipefail
+          # Base: dispatch input, else the ref pinned in cnpg/base-image.
+          BASE="${INPUT_BASE_IMAGE:-}"
+          [ -n "$BASE" ] || BASE=$(grep -v -E '^\s*(#|$)' cnpg/base-image | head -1 | tr -d '[:space:]')
+          [ -n "$BASE" ] || { echo "::error::no base image (cnpg/base-image is empty)"; exit 1; }
+          # Same scheme as the base image: postgres18 release from
+          # ansible/vars.yml + this commit. grep/sed, not yq: the DO builder
+          # snapshot ships docker/buildx/git/jq only.
+          PG_RELEASE=$(sed -n -E 's/^[[:space:]]*postgres18:[[:space:]]*"([^"]+)".*/\1/p' ansible/vars.yml)
+          [ -n "$PG_RELEASE" ] \
+            || { echo "::error::could not read postgres_release.postgres18 from ansible/vars.yml"; exit 1; }
+          VERSION="${PG_RELEASE}-$(git rev-parse --short=8 HEAD)"
+          {
+            echo "base=${BASE}"
+            echo "image=${IMAGE_BASE}:${VERSION}"
+            echo "image_latest=${IMAGE_BASE}:18-latest"
+          } >> "$GITHUB_OUTPUT"
+          echo "Base image:   $BASE"
+          echo "Computed tag: $VERSION"
+
+      # Before the build: the base image lives in Harbor too.
+      - name: Log in to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: harbor.trungnguyen.dev
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Pull base image
+        id: base
+        env:
+          BASE: ${{ steps.tag.outputs.base }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            docker pull --quiet "$BASE" && break
+            [ "$attempt" = 3 ] && { echo "::error::could not pull $BASE"; exit 1; }
+            echo "::warning::pull attempt ${attempt} failed; retrying in 20s…"; sleep 20
+          done
+          DIGEST=$(docker image inspect --format '{{index .RepoDigests 0}}' "$BASE")
+          echo "digest=${DIGEST##*@}" >> "$GITHUB_OUTPUT"
+          echo "Base digest: ${DIGEST##*@}"
+
+      # Official Supabase self-hosted DB files, fresh from supabase/supabase
+      # (docker/volumes/db, as docker/docker-compose.yml mounts them) on every
+      # build, so the image never lags behind upstream self-hosting. Resolved
+      # to a commit SHA, recorded as an image label; pin an older ref via the
+      # supabase_ref dispatch input if master ever needs holding back.
+      - name: Fetch Supabase self-hosted DB files
+        id: upstream
+        env:
+          SUPABASE_REF: ${{ inputs.supabase_ref }}
+        run: |
+          set -euo pipefail
+          sh cnpg/fetch-supabase-selfhosted.sh "${SUPABASE_REF:-master}" cnpg/.upstream
+          echo "sha=$(cat cnpg/.upstream/supabase-sha)" >> "$GITHUB_OUTPUT"
+          echo "official_image=$(cat cnpg/.upstream/official-postgres-image)" >> "$GITHUB_OUTPUT"
+
+      # Build ONCE into the local docker daemon, then push separately with
+      # retries (see build-supabase-postgres-18.yml). Inside the build,
+      # generate-templates.sh derives the dbmate templates + mapping.txt from
+      # the base image's migrations + the fetched self-hosted files and
+      # validates them, so an unsafe upstream change fails here, not at deploy.
+      - name: Build image
+        env:
+          BASE: ${{ steps.tag.outputs.base }}
+          BASE_DIGEST: ${{ steps.base.outputs.digest }}
+          SUPABASE_SHA: ${{ steps.upstream.outputs.sha }}
+          IMAGE: ${{ steps.tag.outputs.image }}
+          IMAGE_LATEST: ${{ steps.tag.outputs.image_latest }}
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            --file cnpg/Dockerfile \
+            --build-arg BASE_IMAGE="$BASE" \
+            --build-arg BASE_DIGEST="$BASE_DIGEST" \
+            --build-arg SUPABASE_SHA="$SUPABASE_SHA" \
+            --build-arg postgresql_major=18 \
+            --label org.opencontainers.image.source="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label org.opencontainers.image.revision="${GITHUB_SHA}" \
+            --tag "$IMAGE" --tag "$IMAGE_LATEST" \
+            --load \
+            --progress plain \
+            cnpg
+
+      # Retry the push: Harbor's registry can OOM/502 mid-push on largish
+      # layers. `docker push` skips layers the registry already has (the base
+      # image's layers are cross-mounted from the supabase-postgres repo), so
+      # each retry only re-sends what didn't land.
+      - name: Push to Harbor (retry on 502/OOM)
+        env:
+          IMAGE: ${{ steps.tag.outputs.image }}
+          IMAGE_LATEST: ${{ steps.tag.outputs.image_latest }}
+        run: |
+          set -eu
+          # Upload progress (same monitor as build-supabase-postgres-18.yml):
+          # outside a TTY `docker push` prints no byte counts, so a slow Harbor
+          # upload looks identical to a hang. Bytes sent on the default-route
+          # interface every 30s, e.g. "[upload] 67 MB sent since push start, 88 KB/s".
+          IF=$(ip route show default | awk '{print $5; exit}')
+          sent() { cat "/sys/class/net/$IF/statistics/tx_bytes"; }
+          echo "Image size: $(( $(docker image inspect --format '{{.Size}}' "$IMAGE") / 1048576 )) MB uncompressed (the compressed upload is smaller)"
+          (
+            start=$(sent); p=$start
+            while sleep 30; do
+              b=$(sent); d=$((b - p)); p=$b
+              if [ "$d" -gt 1048576 ]; then
+                echo "[upload] $(( (b - start) / 1048576 )) MB sent since push start, $((d / 30 / 1024)) KB/s"
+              fi
+            done
+          ) &
+          MONITOR=$!
+          trap 'kill "$MONITOR" 2>/dev/null || true' EXIT
+
+          for ref in "$IMAGE" "$IMAGE_LATEST"; do
+            pushed=false
+            for attempt in 1 2 3 4 5; do
+              if docker push "$ref"; then
+                echo "pushed $ref on attempt ${attempt}"; pushed=true; break
+              fi
+              echo "::warning::push of $ref attempt ${attempt} failed (harbor 502 / registry OOM?); retrying in $((attempt * 30))s…"
+              sleep $((attempt * 30))
+            done
+            $pushed || { echo "::error::push of $ref failed after 5 attempts"; exit 1; }
+          done
+
+      - name: Summary
+        env:
+          IMAGE: ${{ steps.tag.outputs.image }}
+          SUPABASE_SHA: ${{ steps.upstream.outputs.sha }}
+          OFFICIAL_IMAGE: ${{ steps.upstream.outputs.official_image }}
+        run: |
+          {
+            echo "## Pushed image"
+            echo "- \`${{ steps.tag.outputs.image }}\`"
+            echo "- \`${{ steps.tag.outputs.image_latest }}\`"
+            echo ""
+            echo "Base: \`${{ steps.tag.outputs.base }}\` (\`${{ steps.base.outputs.digest }}\`)"
+            echo ""
+            echo "Supabase self-hosted DB files: [supabase/supabase@${SUPABASE_SHA:0:10}](https://github.com/supabase/supabase/tree/${SUPABASE_SHA}/docker) (official stack runs \`${OFFICIAL_IMAGE}\`)"
+            echo ""
+            echo "### Generated templates (mapping.txt)"
+            echo '```'
+            docker run --rm --entrypoint cat "$IMAGE" /tmp/processed-templates/mapping.txt | grep -v '^#'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 3. Destroy the droplet — always, whenever one was created ───────────────
+  stop-runner:
+    needs: [start-runner, build]
+    runs-on: k3s-runners
+    # Keyed on droplet_id, NOT on start-runner success: if start-runner created
+    # the droplet and then failed (e.g. the online-poll timed out), this still
+    # deletes it.
+    if: ${{ always() && needs.start-runner.outputs.droplet_id != '' }}
+    timeout-minutes: 10
+    steps:
+      - name: Set up doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_API_TOKEN }}
+
+      - name: Destroy droplet + deregister runner
+        env:
+          GH_PAT: ${{ secrets.GITOPS_PAT }}
+          REPO: ${{ github.repository }}
+          LABEL: ${{ needs.start-runner.outputs.label }}
+          DROPLET_ID: ${{ needs.start-runner.outputs.droplet_id }}
+        run: |
+          set -uo pipefail
+          if [ -n "${DROPLET_ID:-}" ]; then
+            doctl compute droplet delete "$DROPLET_ID" --force || true
+            echo "Deleted droplet ${DROPLET_ID}"
+          fi
+          RID=$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_PAT}" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/actions/runners?per_page=100" \
+            | jq -r --arg L "$LABEL" '.runners[] | select(any(.labels[]; .name==$L)) | .id' | head -1 || true)
+          if [ -n "${RID:-}" ] && [ "$RID" != "null" ]; then
+            curl -fsSL -X DELETE \
+              -H "Authorization: Bearer ${GH_PAT}" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPO}/actions/runners/${RID}" || true
+            echo "Deregistered lingering runner ${RID}"
+          fi

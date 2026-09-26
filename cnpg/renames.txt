@@ -1,0 +1,20 @@
+# Legacy renames applied by generate-templates.sh: <source_path>  <dest_path>
+# (paths relative to /docker-entrypoint-initdb.d, i.e. /tmp/elearning-scripts-origin)
+#
+# dbmate keys each migration by its leading digits, and init-scripts/ and
+# migrations/ share ONE table (internal.schema_migrations). Upstream Supabase
+# 17.6.1.111+ collapsed several files onto the same prefix (99-jwt, 99-roles,
+# 99-realtime, 99-logs, 99-pooler; 00-extension vs init-scripts/00-schema),
+# which collide as version 99 / 00. Earlier releases used the unique prefixes
+# below and existing clusters already have those rows applied, so we keep them.
+#
+# Every source listed here MUST exist, or the build fails (upstream renamed or
+# dropped a file: review and update this table). A new upstream file that
+# collides with an existing version also fails the build: add a rename here.
+
+init-scripts/99-jwt.sql        init-scripts/99100-jwt.sql
+init-scripts/99-roles.sql      init-scripts/99101-roles.sql
+migrations/00-extension.sql    migrations/00001-extension.sql
+migrations/99-realtime.sql     migrations/99200-realtime.sql
+migrations/99-logs.sql         migrations/99201-logs.sql
+migrations/99-pooler.sql       migrations/99202-pooler.sql
