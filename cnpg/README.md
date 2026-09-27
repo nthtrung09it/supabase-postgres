@@ -18,7 +18,19 @@ Port of hello-k3s-ansible's `build-cnpg-postgres` skill (steps 1–2), automated
 - push to `pg-18-6` with `[ci cnpg]` in the commit message, or
 - `workflow_dispatch` (inputs: `base_image`, `supabase_ref`)
 
-Tag: `<postgres18 release from ansible/vars.yml>-<sha8>` and `18-latest`.
+Tag: **exactly the tag of the base image** it is built on, plus `18-latest`. Both images use
+`<release>-rc<N>-up<upstream supabase/postgres sha8>-<pg-18-6 sha8>` (`.github/scripts/image-tag.sh`):
+the release is `postgres18` in `ansible/vars.yml` without its `-rcN`, and every build takes the next
+free `rcN` over both Harbor repos (rc1 → rc2 → …):
+
+| build | base `supabase-postgres` | `cnpg-supabase-postgres` |
+|---|---|---|
+| base build (`[ci build]`) | `18.6.0.001-rc2-up07c75511-<sha>` | — |
+| first CNPG build on it (`[ci cnpg]`) | — | `18.6.0.001-rc2-up07c75511-<sha>` (same tag) |
+| CNPG-only rebuild on the same base | same image also tagged `…-rc3-…` (same digest) | `…-rc3-…` |
+
+Tags are never overwritten. A base built before this scheme (tag without `-up`) is rejected —
+rebuild the base first.
 
 ## What stays current automatically
 

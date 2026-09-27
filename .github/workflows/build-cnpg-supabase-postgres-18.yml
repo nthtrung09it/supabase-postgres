@@ -13,6 +13,11 @@
 # Base image: the ref pinned in cnpg/base-image (bump it by commit), or the
 # workflow_dispatch `base_image` input.
 #
+# Tag = EXACTLY the base image's tag (.github/scripts/image-tag.sh), e.g. base
+# supabase-postgres:18.6.0.001-rc1-up07c75511-76be8da8 -> cnpg-supabase-postgres:18.6.0.001-rc1-up07c75511-76be8da8.
+# A CNPG-only rebuild (the cnpg repo has that tag already) takes the next free rc and
+# the same base image is tagged with it too (same digest), so both tags keep matching.
+#
 # Same droplet pattern as build-supabase-postgres-18.yml, but a light build
 # (pull base + pip barman + dbmate, ~10 min), so the snapshot-floor
 # s-2vcpu-4gb droplet and the regular 2h ci-ephemeral reaper tag.
@@ -144,7 +149,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Resolve base image + compute tag
+      - name: Resolve base image + tag
         id: tag
         env:
           INPUT_BASE_IMAGE: ${{ inputs.base_image }}
@@ -154,20 +159,22 @@ jobs:
           BASE="${INPUT_BASE_IMAGE:-}"
           [ -n "$BASE" ] || BASE=$(grep -v -E '^\s*(#|$)' cnpg/base-image | head -1 | tr -d '[:space:]')
           [ -n "$BASE" ] || { echo "::error::no base image (cnpg/base-image is empty)"; exit 1; }
-          # Same scheme as the base image: postgres18 release from
-          # ansible/vars.yml + this commit. grep/sed, not yq: the DO builder
-          # snapshot ships docker/buildx/git/jq only.
-          PG_RELEASE=$(sed -n -E 's/^[[:space:]]*postgres18:[[:space:]]*"([^"]+)".*/\1/p' ansible/vars.yml)
-          [ -n "$PG_RELEASE" ] \
-            || { echo "::error::could not read postgres_release.postgres18 from ansible/vars.yml"; exit 1; }
-          VERSION="${PG_RELEASE}-$(git rev-parse --short=8 HEAD)"
+          # The cnpg tag is the base's tag, so the base must be one of our rc-scheme builds.
+          RELEASE=$(bash .github/scripts/image-tag.sh release)
+          BASE_TAG=${BASE##*:}
+          case "$BASE" in harbor.trungnguyen.dev/elearning/supabase-postgres:*) ;; *)
+            echo "::error::base $BASE is not in harbor.trungnguyen.dev/elearning/supabase-postgres"; exit 1;; esac
+          echo "$BASE_TAG" | grep -q -E "^${RELEASE//./\\.}-rc[0-9]+-up[0-9a-f]{8}-[0-9a-f]{8}$" \
+            || { echo "::error::base tag $BASE_TAG is not <release ${RELEASE}>-rcN-up<sha8>-<sha8> (built before the rc scheme? rebuild the base)"; exit 1; }
           {
             echo "base=${BASE}"
-            echo "image=${IMAGE_BASE}:${VERSION}"
+            echo "base_tag=${BASE_TAG}"
+            echo "release=${RELEASE}"
+            echo "local=${IMAGE_BASE}:build-${GITHUB_RUN_ID}"
             echo "image_latest=${IMAGE_BASE}:18-latest"
           } >> "$GITHUB_OUTPUT"
-          echo "Base image:   $BASE"
-          echo "Computed tag: $VERSION"
+          echo "Base image: $BASE"
+          echo "Tag:        $BASE_TAG (or the next free rc if a cnpg image already has it — decided at push)"
 
       # Before the build: the base image lives in Harbor too.
       - name: Log in to Harbor
@@ -217,7 +224,7 @@ jobs:
           BASE: ${{ steps.tag.outputs.base }}
           BASE_DIGEST: ${{ steps.base.outputs.digest }}
           SUPABASE_SHA: ${{ steps.upstream.outputs.sha }}
-          IMAGE: ${{ steps.tag.outputs.image }}
+          IMAGE: ${{ steps.tag.outputs.local }}
           IMAGE_LATEST: ${{ steps.tag.outputs.image_latest }}
         run: |
           set -euo pipefail
@@ -240,11 +247,39 @@ jobs:
       # image's layers are cross-mounted from the supabase-postgres repo), so
       # each retry only re-sends what didn't land.
       - name: Push to Harbor (retry on 502/OOM)
+        id: push
         env:
-          IMAGE: ${{ steps.tag.outputs.image }}
+          LOCAL: ${{ steps.tag.outputs.local }}
+          BASE_TAG: ${{ steps.tag.outputs.base_tag }}
+          RELEASE: ${{ steps.tag.outputs.release }}
           IMAGE_LATEST: ${{ steps.tag.outputs.image_latest }}
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
         run: |
           set -eu
+          T=.github/scripts/image-tag.sh
+          # First CNPG build on this base: its tag. Already built once (CNPG-only rebuild):
+          # the next free rc, and the base gets that tag too (same digest). Never overwrite.
+          TAG=$BASE_TAG
+          rc=0; bash "$T" exists cnpg-supabase-postgres "$TAG" || rc=$?
+          [ "$rc" = 2 ] && { echo "::error::cannot read Harbor tags"; exit 1; }
+          if [ "$rc" = 0 ]; then
+            N=$(bash "$T" next-rc "$RELEASE")
+            while :; do
+              TAG="${RELEASE}-rc${N}${BASE_TAG#"${BASE_TAG%%-up*}"}"
+              r1=0; bash "$T" exists cnpg-supabase-postgres "$TAG" || r1=$?
+              r2=0; bash "$T" exists supabase-postgres "$TAG" || r2=$?
+              { [ "$r1" = 2 ] || [ "$r2" = 2 ]; } && { echo "::error::cannot read Harbor tags"; exit 1; }
+              [ "$r1" = 1 ] && [ "$r2" = 1 ] && break
+              N=$((N + 1))
+            done
+            bash "$T" add-tag supabase-postgres "$BASE_TAG" "$TAG"
+            echo "CNPG-only rebuild: base supabase-postgres:${BASE_TAG} is now also :${TAG} (same digest)"
+          fi
+          IMAGE="${IMAGE_BASE}:${TAG}"
+          docker tag "$LOCAL" "$IMAGE"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "Tag: ${TAG}"
           # Upload progress (same monitor as build-supabase-postgres-18.yml):
           # outside a TTY `docker push` prints no byte counts, so a slow Harbor
           # upload looks identical to a hang. Bytes sent on the default-route
@@ -278,13 +313,13 @@ jobs:
 
       - name: Summary
         env:
-          IMAGE: ${{ steps.tag.outputs.image }}
+          IMAGE: ${{ steps.push.outputs.image }}
           SUPABASE_SHA: ${{ steps.upstream.outputs.sha }}
           OFFICIAL_IMAGE: ${{ steps.upstream.outputs.official_image }}
         run: |
           {
             echo "## Pushed image"
-            echo "- \`${{ steps.tag.outputs.image }}\`"
+            echo "- \`${{ steps.push.outputs.image }}\`"
             echo "- \`${{ steps.tag.outputs.image_latest }}\`"
             echo ""
             echo "Base: \`${{ steps.tag.outputs.base }}\` (\`${{ steps.base.outputs.digest }}\`)"

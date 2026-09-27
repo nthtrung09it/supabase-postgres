@@ -145,13 +145,11 @@ jobs:
         id: tag
         run: |
           set -euo pipefail
-          # Read the release string from ansible/vars.yml (postgres18, e.g.
-          # 18.6.0.001-rc1) — do NOT hardcode it, or the tag keeps claiming an
-          # old release after a bump. grep/sed, not yq: the DO builder snapshot
-          # ships docker/buildx/git/jq only.
-          PG_RELEASE=$(sed -n -E 's/^[[:space:]]*postgres18:[[:space:]]*"([^"]+)".*/\1/p' ansible/vars.yml)
-          [ -n "$PG_RELEASE" ] \
-            || { echo "::error::could not read postgres_release.postgres18 from ansible/vars.yml"; exit 1; }
+          # Tag scheme: .github/scripts/image-tag.sh — <release>-rc<N>-up<upstream>-<commit>.
+          # The release comes from ansible/vars.yml (postgres18 without its -rcN); N, the
+          # next free rc over both image repos, is taken at PUSH time, so a failed build
+          # uses no number.
+          PG_RELEASE=$(bash .github/scripts/image-tag.sh release)
 
           # Upstream supabase/postgres commit this build is based on: the newest
           # commit in HEAD's history that some supabase/postgres branch contains
@@ -164,21 +162,21 @@ jobs:
           UPSTREAM=$(git rev-list --date-order HEAD | grep -v -x -F -f "$RUNNER_TEMP/ours.txt" | sed -n 1p)
           [ -n "$UPSTREAM" ] || { echo "::error::no supabase/postgres commit found in HEAD's history"; exit 1; }
 
-          # <release>-up<upstream supabase/postgres>-<this repo>: says which
-          # upstream it is built on, and rebuilds on the same upstream (e.g. a
-          # fix on pg-18-6) still get a unique tag.
+          # -up<upstream supabase/postgres>-<this repo>: which upstream it is built on,
+          # and which commit of this fork.
           SHA_SHORT=$(git rev-parse --short=8 HEAD)
           UP_SHORT=$(git rev-parse --short=8 "$UPSTREAM")
-          VERSION="${PG_RELEASE}-up${UP_SHORT}-${SHA_SHORT}"
           {
-            echo "image=${IMAGE_BASE}:${VERSION}"
+            echo "release=${PG_RELEASE}"
+            echo "suffix=-up${UP_SHORT}-${SHA_SHORT}"
+            echo "local=${IMAGE_BASE}:build-${GITHUB_RUN_ID}"
             echo "image_latest=${IMAGE_BASE}:18-latest"
             echo "upstream=${UPSTREAM}"
           } >> "$GITHUB_OUTPUT"
           echo "Upstream supabase/postgres: $(git log -1 --format='%h %cd %s' --date=short "$UPSTREAM")"
           echo "  on: $(git branch -r --contains "$UPSTREAM" | grep upstream/ | tr -d ' ' | tr '\n' ' ')"
           echo "Our commits on top: $(grep -c . "$RUNNER_TEMP/ours.txt")"
-          echo "Computed tag: $VERSION"
+          echo "Tag: ${PG_RELEASE}-rc<next free at push>-up${UP_SHORT}-${SHA_SHORT}"
 
       # Safety net for the parallel Nix build below (4 derivations x 4 threads):
       # several Rust/pgrx builds linking at once can exceed the droplet's 16 GB.
@@ -203,7 +201,7 @@ jobs:
       # the whole job timeout retrying.
       - name: Build image
         env:
-          IMAGE: ${{ steps.tag.outputs.image }}
+          IMAGE: ${{ steps.tag.outputs.local }}
           IMAGE_LATEST: ${{ steps.tag.outputs.image_latest }}
           UPSTREAM: ${{ steps.tag.outputs.upstream }}
         run: |
@@ -256,11 +254,30 @@ jobs:
       # layers. `docker push` skips layers the registry already has, so each
       # retry only re-sends what didn't land.
       - name: Push to Harbor (retry on 502/OOM)
+        id: push
         env:
-          IMAGE: ${{ steps.tag.outputs.image }}
+          LOCAL: ${{ steps.tag.outputs.local }}
+          RELEASE: ${{ steps.tag.outputs.release }}
+          SUFFIX: ${{ steps.tag.outputs.suffix }}
           IMAGE_LATEST: ${{ steps.tag.outputs.image_latest }}
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
         run: |
           set -eu
+          # The next free rc of this release over both image repos, taken now (after the
+          # build), never an existing tag: nothing is ever overwritten.
+          N=$(bash .github/scripts/image-tag.sh next-rc "$RELEASE")
+          while :; do
+            TAG="${RELEASE}-rc${N}${SUFFIX}"
+            rc=0; bash .github/scripts/image-tag.sh exists supabase-postgres "$TAG" || rc=$?
+            [ "$rc" = 2 ] && { echo "::error::cannot read Harbor tags"; exit 1; }
+            [ "$rc" = 1 ] && break
+            N=$((N + 1))
+          done
+          IMAGE="${IMAGE_BASE}:${TAG}"
+          docker tag "$LOCAL" "$IMAGE"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "Tag: ${TAG}"
           # Upload progress (same monitor as open-design's
           # build-open-design.yml): outside a TTY `docker push` prints no byte
           # counts, so a slow Harbor upload looks identical to a hang. Only a
@@ -300,7 +317,7 @@ jobs:
         run: |
           {
             echo "## Pushed image"
-            echo "- \`${{ steps.tag.outputs.image }}\`"
+            echo "- \`${{ steps.push.outputs.image }}\`"
             echo "- \`${{ steps.tag.outputs.image_latest }}\`"
             echo ""
             echo "Upstream: [supabase/postgres@${UPSTREAM:0:8}](https://github.com/supabase/postgres/commit/${UPSTREAM}) + this repo @ \`${GITHUB_SHA:0:8}\`"
