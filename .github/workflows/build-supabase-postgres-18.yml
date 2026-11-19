@@ -5,7 +5,7 @@
 # pre-baked builder snapshot, it registers as an --ephemeral runner, builds
 # Dockerfile-18, pushes to Harbor, and stop-runner destroys it.
 #
-# Why a LONG build: nothing built against PG 18.6 exists in any binary cache,
+# Why a LONG build: nothing built against PG 18.x exists in any binary cache,
 # so the single `nix profile add .#psql_18_slim/bin` layer in Dockerfile-18
 # compiles Postgres plus every extension from source — including the Rust/pgrx
 # ones (pg_graphql, pg_jsonschema, wrappers). That can run past the 2h
