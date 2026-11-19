@@ -30,10 +30,18 @@
       - salt-minion={{ salt_release }}
     state: present
 
+- name: Restrict salt minion config dir
+  ansible.builtin.file:
+    path: /etc/salt/minion.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
 - name: Pin salt packages at major version
   ansible.builtin.copy:
     content: |
-      Package: salt-common salt-minion
+      Package: salt-minion salt-common
       Pin: version {{ salt_release.split('.')[0] }}.*
       Pin-Priority: 1001
     dest: /etc/apt/preferences.d/saltstack-pin

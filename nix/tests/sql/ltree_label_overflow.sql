@@ -18,6 +18,7 @@
 
 BEGIN;
 
+SET client_min_messages = warning; -- cli does not have ltree so does not show the already exists notice
 CREATE EXTENSION IF NOT EXISTS ltree;
 
 WITH v AS (

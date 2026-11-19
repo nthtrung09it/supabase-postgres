@@ -8,6 +8,7 @@
   stdenv,
 }:
 {
+  # TODO(mmlb): make this into a proper package that uses writeShellApplication or so to pass in PATH deps and drop perl since we can use gnused
   makePostgresDevSetup =
     {
       pkgs,
@@ -84,6 +85,12 @@
 
       substitutions = {
         SHELL_PATH = "${pkgs.bash}/bin/bash";
+        TOOLS_PATH = pkgs.lib.makeBinPath [
+          pkgs.bash
+          pkgs.coreutils
+          pkgs.gnused
+          pkgs.perl
+        ];
         PGSQL_DEFAULT_PORT = "${defaults.port}";
         PGSQL_SUPERUSER = "${defaults.superuser}";
         PSQL15_BINDIR = "${psql_15}";

@@ -160,7 +160,7 @@ jobs:
         run: |
           set -euo pipefail
           # Tag scheme: .github/scripts/image-tag.sh — <release>-rc<N>-up<upstream>-<commit>.
-          # The release comes from ansible/vars.yml (postgres18 without its -rcN); N, the
+          # The release comes from ansible/postgres_release.yml (postgres18 without any -rcN); N, the
           # next free rc over both image repos, is taken at PUSH time, so a failed build
           # uses no number.
           PG_RELEASE=$(bash .github/scripts/image-tag.sh release)

@@ -17,7 +17,7 @@ let
     let
       cargo = rust-bin.stable.${rustVersion}.default;
       mkPgrxExtension = callPackages ../../cargo-pgrx/mkPgrxExtension.nix {
-        inherit rustVersion pgrxVersion;
+        inherit rustVersion pgrxVersion rust-bin;
       };
       src = fetchFromGitHub {
         owner = "supabase";
@@ -186,6 +186,7 @@ in
   '';
 
   passthru = {
+    perVersion = lib.mapAttrs (name: value: build name value.hash value.rust value.pgrx) versionsToUse;
     versions = versionsBuilt;
     numberOfVersions = numberOfVersionsBuilt;
     inherit pname latestOnly;

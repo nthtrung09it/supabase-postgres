@@ -13,6 +13,9 @@
 
 BEGIN;
 
+SET client_min_messages = warning; -- cli does not have intarray but others do, avoid the notice
+CREATE EXTENSION IF NOT EXISTS intarray; -- cli
+
 -- A schema the non-superuser controls, so CREATE OPERATOR reaches the estimator
 -- validation rather than failing an earlier schema-permission check.
 CREATE SCHEMA op_ns;
@@ -54,4 +57,5 @@ DROP OPERATOR op_ns.@@@ (_int4, _int4);
 
 RESET ROLE;
 
+RESET client_min_message;
 ROLLBACK;

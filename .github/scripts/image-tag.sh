@@ -2,7 +2,7 @@
 # Image tags of the PG 18 fork builds (build-supabase-postgres-18.yml, build-cnpg-supabase-postgres-18.yml).
 #
 # Scheme (owner decision 2026-09-27): <release>-rc<N>-up<upstream sha8>-<commit sha8>
-#   release  postgres18 in ansible/vars.yml without its -rcN (18.6.0.001-rc1 -> 18.6.0.001)
+#   release  postgres18 in ansible/postgres_release.yml without any -rcN (18.7.0.001)
 #   N        every build takes the next free rc of that release, counted over BOTH repos
 #   base     supabase-postgres:18.6.0.001-rc1-up07c75511-76be8da8
 #   cnpg     cnpg-supabase-postgres:<exactly the tag of the base it is built on>
@@ -31,8 +31,8 @@ tags() { # every tag of a repo (paged)
 
 case "${1:-}" in
   release)
-    rel=$(sed -n -E 's/^[[:space:]]*postgres18:[[:space:]]*"([^"]+)".*/\1/p' "${VARS:-ansible/vars.yml}")
-    [ -n "$rel" ] || { echo "no postgres_release.postgres18 in ansible/vars.yml" >&2; exit 1; }
+    rel=$(sed -n -E 's/^[[:space:]]*postgres18:[[:space:]]*"([^"]+)".*/\1/p' "${VARS:-ansible/postgres_release.yml}")
+    [ -n "$rel" ] || { echo "no postgres_release.postgres18 in ansible/postgres_release.yml" >&2; exit 1; }
     echo "${rel%-rc*}" ;;
   next-rc)
     rel=${2:?release}; max=0

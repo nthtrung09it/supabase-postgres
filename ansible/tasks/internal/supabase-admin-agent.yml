@@ -1,7 +1,7 @@
 - name: supabase-admin-agent - system group
   ansible.builtin.group:
     name: supabase-admin-agent
-    gid: "{{ 987 if not qemu else 988 }}"
+    gid: "{{ gids.supabase_admin_agent }}"
     system: yes
 
 - name: supabase-admin-agent - system user
@@ -25,6 +25,7 @@
     path: /etc/salt/gpgkeys
     owner: root
     group: salt
+    mode: "0700"
     state: directory
 
 - name: give supabase-admin-agent user permissions

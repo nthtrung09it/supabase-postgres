@@ -12,13 +12,13 @@
 
 BEGIN;
 
+SET client_min_messages = warning; -- OrioleDB shows a NOTICE/DETAILS, lets avoid the diff from vanilla
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 CREATE TABLE bg_nan (v float8);
 INSERT INTO bg_nan VALUES (1), (2), (3), ('NaN');
 CREATE INDEX bg_nan_gist ON bg_nan USING gist (v);
 
-SET client_min_messages = warning; -- OrioleDB shows a NOTICE/DETAILS, lets avoid the diff from vanilla
 SET enable_seqscan = off; -- Force index scans so we exercise the opclass, not a seqscan recheck.
 
 -- NaN sorts as greater than every non-NaN value and equals only itself.
@@ -28,5 +28,6 @@ SELECT count(*) AS ne_two   FROM bg_nan WHERE v <> 2;         -- 1, 3, NaN
 SELECT v FROM bg_nan WHERE v >= 3 ORDER BY v;                 -- 3, NaN
 
 RESET enable_seqscan;
+RESET client_min_messages;
 
 ROLLBACK;

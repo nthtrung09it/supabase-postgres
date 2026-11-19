@@ -27,7 +27,6 @@
         shell: '/bin/bash'
         state: 'present'
         system: true
-      become: yes
 
     - name: Create relevant directories
       ansible.builtin.file:
@@ -108,20 +107,13 @@
         group: 'postgres'
         src: 'files/postgresql_config/custom_read_replica.conf'
 
-    - name: configure pam
-      block:
-        - name: Check if psql_version is psql_15
-          ansible.builtin.set_fact:
-            is_psql_15: "{{ psql_version in ['psql_15'] }}"
-
-        - name: create placeholder pam config
-          when: not is_psql_15
-          file:
-            path: '/etc/pam.d/postgresql'
-            state: touch
-            owner: postgres
-            group: postgres
-            mode: 0664
+    - name: Create placeholder pam config
+      ansible.builtin.file:
+        path: '/etc/pam.d/postgresql'
+        state: touch
+        owner: postgres
+        group: postgres
+        mode: '0664'
 
     - name: Create directory on data volume
       ansible.builtin.file:
@@ -153,7 +145,6 @@
       ansible.builtin.apt:
         name: 'locales'
         state: 'present'
-      become: true
 
     - name: configure locales
       ansible.builtin.lineinfile:
@@ -161,7 +152,6 @@
         line: "{{ locale_item }}.UTF-8 UTF-8"
         path: '/etc/locale.gen'
         state: 'present'
-      become: true
       loop:
         - 'C'
         - 'en_US'
@@ -171,12 +161,10 @@
     - name: locale-gen
       ansible.builtin.command:
         cmd: 'locale-gen'
-      become: true
 
     - name: update-locale
       ansible.builtin.command:
         cmd: 'update-locale'
-      become: true
 
     - name: Install Postgres extensions
       ansible.builtin.import_tasks:
@@ -197,8 +185,8 @@
         passno: "2"
         state: mounted
 
-    - name: Initialize the database stage2 (NOT PG17 NOR PG17-OrioleDB NOR PG18)
-      when: psql_version not in ['psql_17', 'psql_18', 'psql_orioledb-17']
+    - name: Initialize the database stage2 (PG15)
+      when: is_psql_15
       become: true
       become_user: 'postgres'
       ansible.builtin.command:
@@ -212,8 +200,8 @@
       vars:
         ansible_command_timeout: 60
 
-    - name: Initialize the database stage2 (PG17 OR PG17-OrioleDB OR PG18)
-      when: psql_version in ['psql_17', 'psql_18', 'psql_orioledb-17']
+    - name: Initialize the database stage2 (PG17+)
+      when: not is_psql_15
       become: true
       become_user: 'postgres'
       ansible.builtin.command:
@@ -259,7 +247,6 @@
     loop_var: 'systemd_svc_item'
 
 - name: initialize pg required state
-  become: true
   ansible.builtin.file:
     group: 'postgres'
     owner: 'postgres'
@@ -290,10 +277,8 @@
     owner: 'root'
     path: '/etc/systemd/system/postgresql.service.d'
     state: 'directory'
-  become: true
 
 - name: Ensure PostgreSQL starts after tuned
-  become: true
   community.general.ini_file:
     create: true
     group: 'root'
@@ -307,7 +292,6 @@
     value: 'tuned.service'
 
 - name: Ensure PostgreSQL wants tuned
-  become: true
   community.general.ini_file:
     create: true
     group: 'root'
@@ -333,7 +317,6 @@
     create: true
     dest: '/var/lib/postgresql/.bashrc'
     line: "{{ lang_item }}"
-  become: true
   loop:
     - 'export LOCALE_ARCHIVE=/usr/lib/locale/locale-archive'
     - 'export LANG="en_US.UTF-8"'

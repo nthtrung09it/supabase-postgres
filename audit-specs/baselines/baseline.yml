@@ -145,6 +145,12 @@ file:
     owner: "1006"
     group: "0"
     filetype: file
+  /etc/adminapi/pg_upgrade_scripts/start_guard.sh:
+    exists: true
+    mode: "0755"
+    owner: "1006"
+    group: "0"
+    filetype: file
   /etc/alternatives/README:
     exists: true
     mode: "0644"
@@ -4647,7 +4653,7 @@ file:
     filetype: file
   /etc/pgbouncer/pgbouncer.ini:
     exists: true
-    mode: "0700"
+    mode: "0600"
     owner: "1000"
     group: "0"
     filetype: file
@@ -4911,7 +4917,7 @@ file:
     filetype: file
   /etc/salt/gpgkeys:
     exists: true
-    mode: "0755"
+    mode: "0700"
     owner: "993"
     group: "987"
     filetype: directory
@@ -5366,6 +5372,12 @@ file:
     group: "0"
     filetype: file
   /etc/systemd/system/commence-backup.service:
+    exists: true
+    mode: "0644"
+    owner: "0"
+    group: "0"
+    filetype: file
+  /etc/systemd/system/commence-restore.service:
     exists: true
     mode: "0644"
     owner: "0"

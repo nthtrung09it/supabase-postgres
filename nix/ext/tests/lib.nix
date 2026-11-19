@@ -3,11 +3,9 @@ let
   inherit (pkgs) lib;
   system = pkgs.pkgsLinux.stdenv.hostPlatform.system;
 
-  expectedVersions = {
-    "15" = "15.19";
-    "17" = "17.11";
-    "18" = "18.7";
-  };
+  expectedVersions = lib.mapAttrs (
+    _: config: config.version
+  ) self.supabase.supportedPostgresVersions.postgres;
 
   defaultPort = 5432;
 
@@ -101,7 +99,7 @@ let
 
       # Version-specific adjustments (mirroring run-server.sh.in:250-295)
       ${
-        if majorVersion >= "17" || majorVersion >= "orioledb-17" then
+        if majorVersion == "17" || majorVersion == "orioledb-17" then
           ''
             # PG 17+: remove timescaledb from shared_preload_libraries
             sed -i 's/ timescaledb,//g' $out/postgresql.conf

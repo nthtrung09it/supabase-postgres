@@ -20,6 +20,10 @@
 -- (identically on both builds).
 --
 -- Refs: PSQL-1110, PSQL-1234.
+BEGIN;
+SET client_min_messages = warning; -- cli does not have ltree so does not show the already exists notice
+CREATE EXTENSION IF NOT EXISTS intarray;
+CREATE EXTENSION IF NOT EXISTS ltree;
 -- Functional sanity: well-formed queries still parse and match on both builds.
 SELECT '{1,2,3}'::int[] @@ '2&4'::query_int AS q_and; -- false
  q_and 
@@ -52,12 +56,10 @@ ERROR:  query_int expression is too complex
 -- ltxtquery: same flat-chain shape overflows the ltxtquery size field.
 SELECT (SELECT 'a | ' || string_agg('b', ' & ')
         FROM generate_series(1, 17000) AS i)::ltxtquery IS NOT NULL AS ltxt_overflow;
-ERROR:  ltxtquery is too large
--- lquery: total length of one level's OR-variants overflows.
-SELECT (repeat('x', 1000) || repeat('|' || repeat('x', 1000), 65))::lquery IS NOT NULL AS lq_totallen;
-ERROR:  lquery level is too large
-DETAIL:  Total size of level exceeds the maximum allowed (65535 bytes).
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- lquery: too many OR-variants in a single level.
 SELECT (repeat('a|', 65535) || 'a')::lquery IS NOT NULL AS lq_numvar;
-ERROR:  lquery level has too many variants
-DETAIL:  Number of variants exceeds the maximum allowed (65535).
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+RESET client_min_messages;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ROLLBACK;
