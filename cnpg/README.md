@@ -15,11 +15,11 @@ Port of hello-k3s-ansible's `build-cnpg-postgres` skill (steps 1–2), automated
 
 `.github/workflows/build-cnpg-supabase-postgres-18.yml`, on an ephemeral DO droplet:
 
-- push to `pg-18-6` with `[ci cnpg]` in the commit message, or
+- push to a `pg-18-<minor>` branch (`pg-18-7`, ...) with `[ci cnpg]` in the commit message, or
 - `workflow_dispatch` (inputs: `base_image`, `supabase_ref`)
 
 Tag: **exactly the tag of the base image** it is built on, plus `18-latest`. Both images use
-`<release>-rc<N>-up<upstream supabase/postgres sha8>-<pg-18-6 sha8>` (`.github/scripts/image-tag.sh`):
+`<release>-rc<N>-up<upstream supabase/postgres sha8>-<branch commit sha8>` (`.github/scripts/image-tag.sh`):
 the release is `postgres18` in `ansible/postgres_release.yml` without any `-rcN`, and every build takes the next
 free `rcN` over both Harbor repos (rc1 → rc2 → …):
 

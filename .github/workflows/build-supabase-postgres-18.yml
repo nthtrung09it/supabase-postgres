@@ -26,7 +26,8 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - pg-18-6
+      # one branch per PG 18 minor: pg-18-6, pg-18-7, ...
+      - 'pg-18-*'
 
 # One build per commit. Builds of DIFFERENT commits run in parallel (each on its
 # own droplet): their tags never collide, because the push step claims the next
