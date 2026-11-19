@@ -7,13 +7,16 @@
         inherit system;
         config.allowUnfree = true;
         overlays = [
-          # Patch tzdata to 2026f until nixpkgs catches up.
-          # Drop once the pinned nixpkgs ships >= 2026f (the assertion below trips):
-          # remove both the tzdata and the vde2 overrides in this overlay.
+          # tzdata 2026f for PostgreSQL (--with-system-tzdata) until nixpkgs catches up.
+          # Drop once the pinned nixpkgs ships >= 2026f (the assertion below trips).
           #
-          # vde2 is only here because of the tzdata override causing wolfssl to be rebuilt.
-          # wolfssl's own test suite fails on the CI runners.
-          # vde2 only uses wolfssl for vde_cryptcab, which the VM tests don't need, so build vde2 without it.
+          # FORK (pg-18-*): upstream overrides the GLOBAL `tzdata`, which changes the hash
+          # of everything that depends on it (python3, llvm, nodejs, gtk, rustc, ...): 1497
+          # derivations then miss cache.nixos.org. Upstream gets them from its own S3 cache;
+          # this fork builds without it (SUPABASE_NIX_CACHE= — 3-17 KB/s from sgp1), so the
+          # 18.7 build died compiling the world. Here 2026f is a NEW attribute that only
+          # nix/postgresql/default.nix uses, so nothing else is rebuilt, and upstream's vde2
+          # override (only needed because of the global tzdata) is dropped.
           (
             final: prev:
             let
@@ -21,7 +24,7 @@
               version = "2026f";
             in
             {
-              tzdata = prev.tzdata.overrideAttrs (
+              postgresqlTzdata = prev.tzdata.overrideAttrs (
                 old:
                 assert final.lib.assertMsg (
                   # Versions are <year><letter>, so plain string ordering is chronological.
@@ -42,6 +45,13 @@
                         ""
                       ]
                       old.postInstall;
+                  # now.ck fails for builds after 2026-11-01 because zonenow.tab lists zones that became identical.
+                  # Run it at the release time, same as https://github.com/NixOS/nixpkgs/pull/582577.
+                  # (upstream supabase/postgres 857951b5, branch fix/tzdata-check-timestamp, not yet released)
+                  preCheck = ''
+                    release_time_t=$(date -d "$(awk '/^Release /{print $4, $5, $6; exit}' NEWS)" +%s)
+                    checkFlagsArray+=("CHECK_NOW_TIMESTAMP=$release_time_t")
+                  '';
                   srcs = [
                     (final.fetchurl {
                       url = "https://data.iana.org/time-zones/releases/tzdata${version}.tar.gz";
@@ -82,16 +92,6 @@
                 ];
               # node's test suite fails on darwin
               nodejs = prev.nodejs.overrideAttrs { doCheck = !prev.stdenv.hostPlatform.isDarwin; };
-              vde2 = prev.vde2.overrideAttrs (
-                old:
-                assert final.lib.assertMsg (
-                  prev.tzdata.version < version
-                ) "nixpkgs tzdata ${prev.tzdata.version} is not older than ${version}; remove the vde2 override";
-                {
-                  buildInputs = final.lib.remove final.wolfssl old.buildInputs;
-                  configureFlags = (old.configureFlags or [ ]) ++ [ "--disable-cryptcab" ];
-                }
-              );
             }
           )
           (

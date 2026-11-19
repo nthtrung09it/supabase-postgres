@@ -17,6 +17,8 @@ let
         pkgs.callPackage ./generic.nix {
           inherit isOrioleDB;
           inherit (config) version hash revision;
+          # FORK: tzdata 2026f scoped to Postgres (see nix/nixpkgs.nix)
+          tzdata = pkgs.postgresqlTzdata;
           self = pkgs;
           portable = false; # Default to non-portable, can be overridden
         }
