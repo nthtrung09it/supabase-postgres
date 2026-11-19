@@ -84,14 +84,28 @@ jobs:
           # dedicated vCPUs avoid shared-CPU throttling and 16 GB keeps the Rust
           # link steps from OOMing. 100 GB clears the snapshot's 80 GB min disk.
           # Tagged ci-ephemeral-long (NOT ci-ephemeral): see header.
-          DROPLET_ID=$(doctl compute droplet create "$NAME" \
-            --region sgp1 --size c-8 \
-            --image "$SNAPSHOT" \
-            --ssh-keys 43399145 \
-            --tag-name ci-ephemeral-long \
-            --user-data-file /tmp/cloud-init.sh \
-            --wait --output json | jq -r '.[0].id')
-          [ -n "$DROPLET_ID" ] && [ "$DROPLET_ID" != "null" ] || { echo "::error::droplet create failed"; exit 1; }
+          # sgp1 sometimes has no c-8 capacity (2026-11-19: c-8 missing from the
+          # region's size list, so the create failed instantly). The snapshot only
+          # lives in sgp1, so fall back to the next 8 vCPU / 16 GB size sgp1 offers;
+          # NIX_MAX_JOBS / NIX_CORES below are sized for 8 vCPU / 16 GB.
+          SGP1_SIZES=$(doctl compute region list --output json | jq -r '.[] | select(.slug=="sgp1") | .sizes[]')
+          SIZE=""
+          for s in c-8 c2-8vcpu-16gb s-8vcpu-16gb; do
+            if grep -q -x -F "$s" <<<"$SGP1_SIZES"; then SIZE=$s; break; fi
+          done
+          [ -n "$SIZE" ] || { echo "::error::no 8 vCPU / 16 GB size available in sgp1"; exit 1; }
+          echo "Droplet size: ${SIZE}"
+          if ! OUT=$(doctl compute droplet create "$NAME" \
+              --region sgp1 --size "$SIZE" \
+              --image "$SNAPSHOT" \
+              --ssh-keys 43399145 \
+              --tag-name ci-ephemeral-long \
+              --user-data-file /tmp/cloud-init.sh \
+              --wait --output json 2>/tmp/doctl-create.err); then
+            echo "::error::droplet create failed: $(cat /tmp/doctl-create.err)"; exit 1
+          fi
+          DROPLET_ID=$(jq -r '.[0].id' <<<"$OUT" 2>/dev/null || true)
+          [ -n "$DROPLET_ID" ] && [ "$DROPLET_ID" != "null" ] || { echo "::error::droplet create failed: ${OUT}"; exit 1; }
           echo "label=${LABEL}"          >> "$GITHUB_OUTPUT"
           echo "droplet_id=${DROPLET_ID}" >> "$GITHUB_OUTPUT"
           echo "Created droplet ${DROPLET_ID}; waiting for runner '${LABEL}' online…"
