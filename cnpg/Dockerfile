@@ -12,7 +12,7 @@
 # Full image reference. The workflow passes the ref pinned in cnpg/base-image.
 # (The skill's `${BASE_TAG}_${TARGETARCH}` form only fits Docker Hub's
 # per-arch upstream tags; our Harbor base is a plain single-arch amd64 tag.)
-ARG BASE_IMAGE=harbor.trungnguyen.dev/elearning/supabase-postgres:18.6.0.001-rc1-up07c75511-76be8da8
+ARG BASE_IMAGE=harbor.trungnguyen.dev/elearning/supabase-postgres:18.7.0.001-rc2-up92ea0580-004b0273
 FROM ${BASE_IMAGE}
 
 ARG BASE_IMAGE
@@ -25,7 +25,7 @@ ARG DBMATE_VERSION=v2.36.0
 LABEL name="CloudNative Supabase Container Images" \
       vendor="nthtrung09it" \
       version="${postgresql_major}" \
-      release="6" \
+      release="7" \
       summary="PostgreSQL Container images." \
       description="This Docker image contains PostgreSQL, Supabase and Barman Cloud based on Postgres ${postgresql_major}.Supabase with CloudNativePG" \
       org.opencontainers.image.description="This Docker image contains PostgreSQL, Supabase and Barman Cloud based on Postgres ${postgresql_major}.Supabase" \
